@@ -4,6 +4,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import recipeRoutes from './routes/recipeRoutes';
 import categoryRoutes from './routes/categoryRoutes';
+import mealPlanRoutes from './routes/mealPlanRoutes';
 
 // .env dosyasındaki ayarları okumayı aktif ediyoruz
 dotenv.config();
@@ -22,6 +23,7 @@ app.use(express.json());
 // /api/recipes adresine gelen tüm istekleri recipeRoutes garsonuna gönder
 app.use('/api/recipes' , recipeRoutes);
 app.use('/api/categories', categoryRoutes);
+app.use('/api/mealplans', mealPlanRoutes);
 
 // Temel bir Test Route'u (Lab 1'de hocaya gösterebileceğimiz ilk çalışan uç nokta)
 app.get('/', (req: Request, res: Response) => {
