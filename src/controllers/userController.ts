@@ -1,60 +1,17 @@
-// src/controllers/userController.ts
+// User controllers.
 import { Request, Response } from 'express';
-import { users, User } from '../models/user';
-import { mealPlans } from '../models/mealPlan';
-import { recipes } from '../models/recipe';
+import { UserRegistrationInput } from '../models/user';
+import * as userService from '../services/userService';
 
-export const registerUser = (req: Request, res: Response) => {
-    const { username, email, password } = req.body;
-    
-    const newUser: User = {
-        id: `user-${users.length + 101}`,
-        username,
-        email,
-        passwordHash: `mock_hash_${password}`, 
-        role: 'Member'
-    };
-    
-    users.push(newUser);
-    res.status(201).json({ success: true, data: newUser });
+export const registerUser = (req: Request<Record<string, never>, unknown, UserRegistrationInput>, res: Response) => {
+    res.status(201).json({ success: true, data: userService.registerUser(req.body) });
 };
 
-// İŞTE YAZMADIĞIMIZ O YENİ FONKSİYON (Combined Resource)
-export const getCombinedUserProfile = (req: Request, res: Response) => {
-    const userId = req.params.id;
-
-    // 1. Kullanıcıyı bul
-    const user = users.find(u => u.id === userId);
-    if (!user) {
-        res.status(404).json({ success: false, message: "Kullanıcı bulunamadı!" });
-        return;
-    }
-    const { passwordHash, ...safeUserData } = user; // Güvenlik için parolayı gizle
-
-    // 2. Kullanıcının öğün planını bul
-    const activePlan = mealPlans.find(plan => plan.userId === userId);
-
-    // 3. Plandaki tariflerin makrolarını hesapla
-    let totalMacros = { protein: 0, carbs: 0, fat: 0 };
-    
-    if (activePlan) {
-        // Planın içindeki recipeIds (örneğin ["1", "2"]) listesini kullanarak tarifleri bul
-        const planRecipes = recipes.filter(recipe => activePlan.recipeIds.includes(recipe.id));
-        
-        planRecipes.forEach(recipe => {
-            totalMacros.protein += recipe.macros.protein;
-            totalMacros.carbs += recipe.macros.carbs;
-            totalMacros.fat += recipe.macros.fat;
-        });
-    }
-
-    // 4. Her şeyi tek bir JSON yanıtında birleştir[cite: 3]
+// Return the combined user dashboard resource.
+export const getCombinedUserProfile = (req: Request<{ id: string }>, res: Response) => {
+    const dashboard = userService.getUserDashboard(req.params.id);
     res.status(200).json({
         success: true,
-        data: {
-            profile: safeUserData,
-            activeMealPlan: activePlan || null,
-            totalMacroStatistics: totalMacros
-        }
+        data: dashboard
     });
 };

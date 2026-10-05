@@ -1,31 +1,31 @@
 import { Request, Response } from "express";
-import { MealPlan, mealPlans } from "../models/mealPlan";
+import { MealPlanInput } from "../models/mealPlan";
+import * as mealPlanService from "../services/mealPlanService";
 
 export const getAllMealPlans = (req: Request, res: Response)=>{
+const mealPlans = mealPlanService.getMealPlans();
 res.status(200).json({success: true, count: mealPlans.length , data: mealPlans });
 };
 
-//post/mealplans:
-export const createNewMealPlan = (req: Request, res: Response) =>{
-    const newPlan: MealPlan = req.body;
-    newPlan.id = (mealPlans.length +1).toString();
+// POST /mealplans.
+export const createNewMealPlan = (req: Request<Record<string, never>, unknown, MealPlanInput>, res: Response) =>{
+    const newPlan = mealPlanService.createMealPlan(req.body);
 
-    mealPlans.push(newPlan);
-
-    res.status(200).json({success: true, data: newPlan});
+    res.status(201).json({success: true, data: newPlan});
 };
 
-//Idye göre plan getiretto:
+// Get a meal plan by ID.
 
-export const getMealById = (req: Request, res: Response)=>{
-    const id = req.params.id;
-    const plan = mealPlans.find(p => p.id === id);
+export const getMealById = (req: Request<{ id: string }>, res: Response)=>{
+    res.status(200).json({success: true, data: mealPlanService.getMealPlan(req.params.id)});
+};
 
-    if(!plan){
-        res.status(404).json({success: false, message: "Ogun bulunamadi!"});
-        return;
-    }else{
-        res.status(200).json({success: true, data: plan});
-    };
+export const updateMealPlan = (req: Request<{ id: string }, unknown, MealPlanInput>, res: Response) => {
+    res.status(200).json({success: true, data: mealPlanService.updateMealPlan(req.params.id, req.body)});
+};
+
+export const deleteMealPlan = (req: Request<{ id: string }>, res: Response) => {
+    mealPlanService.deleteMealPlan(req.params.id);
+    res.status(204).send();
 };
 

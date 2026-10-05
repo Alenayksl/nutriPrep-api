@@ -5,11 +5,13 @@ export interface MealPlan {
     recipeIds: string[];
 }
 
+export type MealPlanInput = Omit<MealPlan, "id">;
+
 export let mealPlans: MealPlan[] = [
 {
     id: "1",
     userId: "user-101", 
-    title: "Yüksek Proteinli Hafta",
-    recipeIds: ["1", "3"] // Yulaf Pancake ve Chia Bowl'u içeriyor
+    title: "High Protein Week",
+    recipeIds: ["1"]
 }
 ];

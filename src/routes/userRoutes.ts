@@ -1,12 +1,13 @@
-// src/routes/userRoutes.ts
+// User routes.
 import { Router } from 'express';
 import { registerUser, getCombinedUserProfile } from '../controllers/userController';
+import { validateUserRegistration } from '../middleware/validation';
 
 const router = Router();
 
-router.post('/register', registerUser);
+router.post('/register', validateUserRegistration, registerUser);
 
-// Dashboard rotasına istek gelince Combined Resource fonksiyonu çalışacak
+// Return the combined user dashboard resource.
 router.get('/:id/dashboard', getCombinedUserProfile);
 
 export default router;

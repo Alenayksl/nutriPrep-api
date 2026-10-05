@@ -4,15 +4,17 @@ export interface Category{
     description: string;
 }
 
+export type CategoryInput = Omit<Category, "id">;
+
 export let categories: Category[] = [
 {
     id: "1",
-    name: "Kahvaltılıklar",
-    description: "Güne enerjik başlamak için sağlıklı kahvaltı tarifleri"
+    name: "Breakfast",
+    description: "Healthy recipes for an energetic start to the day"
 },
 {
     id: "2",
-    name: "Yüksek Protein",
-    description: "Spor sonrası kas onarımı için protein ağırlıklı öğünler."
+    name: "High Protein",
+    description: "Protein-rich meals for post-workout recovery."
   }
 ];
