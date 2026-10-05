@@ -1,10 +1,13 @@
 import { Router } from "express";
-import { getAllMealPlans, getMealById, createNewMealPlan} from "../controllers/mealPlanController";
+import { getAllMealPlans, getMealById, createNewMealPlan, updateMealPlan, deleteMealPlan} from "../controllers/mealPlanController";
+import { validateMealPlan } from "../middleware/validation";
 
 const router = Router();
 
 router.get('/', getAllMealPlans);
-router.post('/', createNewMealPlan);
+router.post('/', validateMealPlan, createNewMealPlan);
 router.get('/:id', getMealById);
+router.put('/:id', validateMealPlan, updateMealPlan);
+router.delete('/:id', deleteMealPlan);
 
 export default router;

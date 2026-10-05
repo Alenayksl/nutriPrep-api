@@ -7,17 +7,19 @@ export interface Recipe {
     carbs: number;
     fat: number;
     };
-    categoryId: string; // İlişkisel veri bağlantısı
-    authorId: string;   // İlişkisel veri bağlantısı
+    categoryId: string; // Category relation.
+    authorId: string;   // Author relation.
 }
+
+export type RecipeInput = Omit<Recipe, "id">;
 
 export let recipes: Recipe[] = [
   {
     id: "1",
-    title: "Yulaf Pancake",
-    ingredients: ["Yulaf", "Yumurta", "Muz", "Süt"],
+    title: "Oat Pancake",
+    ingredients: ["Oats", "Egg", "Banana", "Milk"],
     macros: { protein: 20, carbs: 45, fat: 10 },
-    categoryId: "cat-1",
+    categoryId: "1",
     authorId: "user-101"
   }
 ];

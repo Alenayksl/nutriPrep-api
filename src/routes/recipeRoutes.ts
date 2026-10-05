@@ -1,11 +1,14 @@
 import { Router } from "express";
-import { getAllRecipes, createRecipe } from "../controllers/recipeController";
+import { getAllRecipes, createRecipe, updateRecipe, deleteRecipe } from "../controllers/recipeController";
+import { validateRecipe } from "../middleware/validation";
 
 const router = Router();
 
-// İstekleri aşçılara (controller'a) yönlendiriyoruz
+// Forward requests to controllers.
 
-router.get('/', getAllRecipes); // GET isteği gelirse getAllRecipes çalışsın
-router.post('/', createRecipe); // POST isteği gelirse createRecipe çalışsın
+router.get('/', getAllRecipes);
+router.post('/', validateRecipe, createRecipe);
+router.put('/:id', validateRecipe, updateRecipe);
+router.delete('/:id', deleteRecipe);
 
 export default router;

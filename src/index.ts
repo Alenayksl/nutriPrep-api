@@ -6,36 +6,40 @@ import recipeRoutes from './routes/recipeRoutes';
 import categoryRoutes from './routes/categoryRoutes';
 import mealPlanRoutes from './routes/mealPlanRoutes';
 import userRoutes from './routes/userRoutes';
+import { errorHandler } from './middleware/errorHandler';
 
-// .env dosyasındaki ayarları okumayı aktif ediyoruz
+// Load settings from the .env file.
 dotenv.config();
 
-// Express uygulamamızı oluşturuyoruz
+// Create the Express application.
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Middleware'ler (Ara katmanlar)
-// cors: Farklı domainlerden (örneğin React uygulaman) gelen isteklere izin verir
+// Middleware configuration.
+// cors allows requests from different domains, such as a React client.
 app.use(cors());
-// express.json(): Gelen isteklerin gövdesindeki (body) veriyi JSON olarak okumamızı sağlar
+// Parse JSON request bodies.
 app.use(express.json());
 
-// --- ROUTE BAĞLANTILARI ---
-// /api/recipes adresine gelen tüm istekleri recipeRoutes garsonuna gönder
+// --- ROUTE REGISTRATION ---
+// Forward requests under /api/recipes to the recipe router.
 app.use('/api/recipes' , recipeRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/mealplans', mealPlanRoutes);
 app.use('/api/users', userRoutes);
 
-// Temel bir Test Route'u (Lab 1'de hocaya gösterebileceğimiz ilk çalışan uç nokta)
+// Basic health check endpoint.
 app.get('/', (req: Request, res: Response) => {
   res.status(200).json({
-    message: "NutriPrep API çalışıyor!",
+    message: "NutriPrep API is running!",
     version: "1.0.0"
   });
 });
 
-// Sunucuyu dinlemeye başla
+// Error middleware must be registered after all routes.
+app.use(errorHandler);
+
+// Start the server after all middleware and routes are registered.
 app.listen(PORT, () => {
-  console.log(` Sunucu http://localhost:${PORT} adresinde başarıyla çalışıyor!`);
+  console.log(`Server is running at http://localhost:${PORT}`);
 });
