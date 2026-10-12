@@ -1,26 +1,28 @@
-export interface Recipe {
-    id: string;
-    title: string;
-    ingredients: string[];
-    macros: {
-    protein: number;
-    carbs: number;
-    fat: number;
-    };
-    categoryId: string; // Category relation.
-    authorId: string;   // Author relation.
+export interface RecipeInput {
+  title: string;
+  description?: string;
+  ingredients: string[];
+  instructions: string;
+  calories?: number;
+  protein?: number;
+  carbs?: number;
+  fat?: number;
+  isPublic?: boolean;
+  categoryId: number;
+  authorId: number;
 }
 
-export type RecipeInput = Omit<Recipe, "id">;
-
-export let recipes: Recipe[] = [
-  {
-    id: "1",
-    title: "Oat Pancake",
-    ingredients: ["Oats", "Egg", "Banana", "Milk"],
-    macros: { protein: 20, carbs: 45, fat: 10 },
-    categoryId: "1",
-    authorId: "user-101"
-  }
-];
+export interface RecipeFilters {
+  page: number;
+  limit: number;
+  categoryId?: number;
+  minCalories?: number;
+  maxCalories?: number;
+  minProtein?: number;
+  maxProtein?: number;
+  minCarbs?: number;
+  maxCarbs?: number;
+  minFat?: number;
+  maxFat?: number;
+}
 

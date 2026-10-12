@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { getAllMealPlans, getMealById, createNewMealPlan, updateMealPlan, deleteMealPlan} from "../controllers/mealPlanController";
+import { getAllMealPlans, getMealById, createNewMealPlan, updateMealPlan, deleteMealPlan } from "../controllers/mealPlanController";
 import { validateMealPlan } from "../middleware/validation";
 
 const router = Router();

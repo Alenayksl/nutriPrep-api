@@ -1,10 +1,4 @@
-export interface User {
-    id: string;
-    username: string;
-    email: string;
-    passwordHash: string;
-    role: 'Guest' | 'Member' | 'Admin';
-}
+import { Role } from "@prisma/client";
 
 export interface UserRegistrationInput {
   username: string;
@@ -12,12 +6,17 @@ export interface UserRegistrationInput {
   password: string;
 }
 
-export let users: User[] = [
-    {
-    id: "user-101",
-    username: "aleyna",
-    email: "aleyna@example.com",
-    passwordHash: "hashed_admin_password_123", // Replace with bcrypt hashing later.
-    role: "Admin"
-  }
-]
+export interface UserUpdateInput {
+  username?: string;
+  email?: string;
+  password?: string;
+}
+
+export interface PublicUser {
+  id: number;
+  username: string | null;
+  email: string;
+  role: Role;
+  createdAt: Date;
+  updatedAt: Date;
+}

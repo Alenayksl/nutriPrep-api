@@ -1,49 +1,133 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.deleteMealPlan = exports.updateMealPlan = exports.createMealPlan = exports.getMealPlan = exports.getMealPlans = void 0;
+exports.mealPlanService = exports.MealPlanService = void 0;
+const client_1 = require("@prisma/client");
 const AppError_1 = require("../errors/AppError");
-const mealPlan_1 = require("../models/mealPlan");
-const recipe_1 = require("../models/recipe");
-const user_1 = require("../models/user");
-const nextId = () => {
-    const highestId = mealPlan_1.mealPlans.reduce((highest, plan) => Math.max(highest, Number(plan.id) || 0), 0);
-    return (highestId + 1).toString();
-};
-const assertRelations = (input) => {
-    if (!user_1.users.some((user) => user.id === input.userId)) {
-        throw new AppError_1.AppError(400, "The selected user does not exist.");
+const prisma_1 = require("../utils/prisma");
+const parseId = (id, resource) => {
+    const parsedId = Number(id);
+    if (!Number.isInteger(parsedId) || parsedId < 1) {
+        throw new AppError_1.AppError(400, `${resource} id must be a positive integer.`);
     }
-    if (input.recipeIds.some((recipeId) => !recipe_1.recipes.some((recipe) => recipe.id === recipeId))) {
-        throw new AppError_1.AppError(400, "A recipe in the meal plan does not exist.");
+    return parsedId;
+};
+const mealPlanInclude = {
+    recipe: {
+        include: { category: true },
+    },
+    user: {
+        select: { id: true, email: true, name: true, role: true },
+    },
+};
+const buildWhere = (filters) => ({
+    ...(filters.userId !== undefined && { userId: filters.userId }),
+    ...(filters.dayOfWeek !== undefined && { dayOfWeek: filters.dayOfWeek }),
+    ...(filters.mealType !== undefined && { mealType: filters.mealType }),
+});
+const toMacroStatistics = (plans) => plans.reduce((totals, plan) => ({
+    calories: totals.calories + (plan.recipe.calories ?? 0),
+    protein: totals.protein + (plan.recipe.protein ?? 0),
+    carbs: totals.carbs + (plan.recipe.carbs ?? 0),
+    fat: totals.fat + (plan.recipe.fat ?? 0),
+}), { calories: 0, protein: 0, carbs: 0, fat: 0 });
+class MealPlanService {
+    async getMealPlans(filters) {
+        const where = buildWhere(filters);
+        const skip = (filters.page - 1) * filters.limit;
+        const [data, total] = await prisma_1.prisma.$transaction([
+            prisma_1.prisma.mealPlan.findMany({
+                where,
+                skip,
+                take: filters.limit,
+                orderBy: [{ dayOfWeek: "asc" }, { mealType: "asc" }],
+                include: mealPlanInclude,
+            }),
+            prisma_1.prisma.mealPlan.count({ where }),
+        ]);
+        return {
+            data,
+            meta: {
+                page: filters.page,
+                limit: filters.limit,
+                total,
+                totalPages: Math.ceil(total / filters.limit),
+            },
+        };
     }
-};
-const getMealPlans = () => mealPlan_1.mealPlans;
-exports.getMealPlans = getMealPlans;
-const getMealPlan = (id) => {
-    const plan = mealPlan_1.mealPlans.find((item) => item.id === id);
-    if (!plan)
-        throw new AppError_1.AppError(404, "Meal plan not found.");
-    return plan;
-};
-exports.getMealPlan = getMealPlan;
-const createMealPlan = (input) => {
-    assertRelations(input);
-    const plan = { id: nextId(), ...input };
-    mealPlan_1.mealPlans.push(plan);
-    return plan;
-};
-exports.createMealPlan = createMealPlan;
-const updateMealPlan = (id, input) => {
-    assertRelations(input);
-    const plan = (0, exports.getMealPlan)(id);
-    Object.assign(plan, input);
-    return plan;
-};
-exports.updateMealPlan = updateMealPlan;
-const deleteMealPlan = (id) => {
-    const index = mealPlan_1.mealPlans.findIndex((plan) => plan.id === id);
-    if (index === -1)
-        throw new AppError_1.AppError(404, "Meal plan not found.");
-    mealPlan_1.mealPlans.splice(index, 1);
-};
-exports.deleteMealPlan = deleteMealPlan;
+    async getMealPlan(id) {
+        const mealPlan = await prisma_1.prisma.mealPlan.findUnique({
+            where: { id: parseId(id, "Meal plan") },
+            include: mealPlanInclude,
+        });
+        if (!mealPlan)
+            throw new AppError_1.AppError(404, "Meal plan not found.");
+        return mealPlan;
+    }
+    async getActivePlan(userId) {
+        const numericUserId = parseId(userId, "User");
+        const plans = await prisma_1.prisma.mealPlan.findMany({
+            where: { userId: numericUserId },
+            orderBy: [{ dayOfWeek: "asc" }, { mealType: "asc" }],
+            include: mealPlanInclude,
+        });
+        return {
+            plans,
+            totalMacroStatistics: toMacroStatistics(plans),
+        };
+    }
+    async createMealPlan(input) {
+        try {
+            return await prisma_1.prisma.mealPlan.create({
+                data: {
+                    user: { connect: { id: input.userId } },
+                    recipe: { connect: { id: input.recipeId } },
+                    dayOfWeek: input.dayOfWeek.trim(),
+                    mealType: input.mealType.trim(),
+                },
+                include: mealPlanInclude,
+            });
+        }
+        catch (error) {
+            if (error instanceof client_1.Prisma.PrismaClientKnownRequestError && error.code === "P2003") {
+                throw new AppError_1.AppError(400, "The selected user or recipe does not exist.");
+            }
+            throw error;
+        }
+    }
+    async updateMealPlan(id, input) {
+        try {
+            return await prisma_1.prisma.mealPlan.update({
+                where: { id: parseId(id, "Meal plan") },
+                data: {
+                    user: { connect: { id: input.userId } },
+                    recipe: { connect: { id: input.recipeId } },
+                    dayOfWeek: input.dayOfWeek.trim(),
+                    mealType: input.mealType.trim(),
+                },
+                include: mealPlanInclude,
+            });
+        }
+        catch (error) {
+            if (error instanceof client_1.Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
+                throw new AppError_1.AppError(404, "Meal plan not found.");
+            }
+            if (error instanceof client_1.Prisma.PrismaClientKnownRequestError && error.code === "P2003") {
+                throw new AppError_1.AppError(400, "The selected user or recipe does not exist.");
+            }
+            throw error;
+        }
+    }
+    async deleteMealPlan(id) {
+        try {
+            await prisma_1.prisma.mealPlan.delete({ where: { id: parseId(id, "Meal plan") } });
+        }
+        catch (error) {
+            if (error instanceof client_1.Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
+                throw new AppError_1.AppError(404, "Meal plan not found.");
+            }
+            throw error;
+        }
+    }
+}
+exports.MealPlanService = MealPlanService;
+exports.mealPlanService = new MealPlanService();
