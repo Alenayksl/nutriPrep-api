@@ -1,62 +1,59 @@
 "use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.deleteMealPlan = exports.updateMealPlan = exports.getMealById = exports.createNewMealPlan = exports.getAllMealPlans = void 0;
-const mealPlanService = __importStar(require("../services/mealPlanService"));
-const getAllMealPlans = (req, res) => {
-    const mealPlans = mealPlanService.getMealPlans();
-    res.status(200).json({ success: true, count: mealPlans.length, data: mealPlans });
+exports.deleteMealPlan = exports.updateMealPlan = exports.createNewMealPlan = exports.getMealById = exports.getAllMealPlans = void 0;
+const AppError_1 = require("../errors/AppError");
+const mealPlanService_1 = require("../services/mealPlanService");
+const queryValue = (value) => {
+    if (typeof value === "string")
+        return value;
+    if (Array.isArray(value) && typeof value[0] === "string")
+        return value[0];
+    return undefined;
+};
+const parseQueryNumber = (value, name) => {
+    const rawValue = queryValue(value);
+    if (rawValue === undefined)
+        return undefined;
+    const parsedValue = Number(rawValue);
+    if (!Number.isInteger(parsedValue) || parsedValue < 1) {
+        throw new AppError_1.AppError(400, `${name} must be a positive integer.`);
+    }
+    return parsedValue;
+};
+const parseFilters = (query) => {
+    const page = parseQueryNumber(query.page, "page") ?? 1;
+    const limit = parseQueryNumber(query.limit, "limit") ?? 20;
+    if (limit > 100)
+        throw new AppError_1.AppError(400, "limit must be between 1 and 100.");
+    return {
+        page,
+        limit,
+        userId: parseQueryNumber(query.userId, "userId"),
+        dayOfWeek: queryValue(query.dayOfWeek),
+        mealType: queryValue(query.mealType),
+    };
+};
+const getAllMealPlans = async (req, res) => {
+    const result = await mealPlanService_1.mealPlanService.getMealPlans(parseFilters(req.query));
+    res.status(200).json({ success: true, ...result });
 };
 exports.getAllMealPlans = getAllMealPlans;
-// POST /mealplans.
-const createNewMealPlan = (req, res) => {
-    const newPlan = mealPlanService.createMealPlan(req.body);
-    res.status(201).json({ success: true, data: newPlan });
-};
-exports.createNewMealPlan = createNewMealPlan;
-// Get a meal plan by ID.
-const getMealById = (req, res) => {
-    res.status(200).json({ success: true, data: mealPlanService.getMealPlan(req.params.id) });
+const getMealById = async (req, res) => {
+    res.status(200).json({ success: true, data: await mealPlanService_1.mealPlanService.getMealPlan(req.params.id) });
 };
 exports.getMealById = getMealById;
-const updateMealPlan = (req, res) => {
-    res.status(200).json({ success: true, data: mealPlanService.updateMealPlan(req.params.id, req.body) });
+const createNewMealPlan = async (req, res) => {
+    const mealPlan = await mealPlanService_1.mealPlanService.createMealPlan(req.body);
+    res.status(201).json({ success: true, data: mealPlan });
+};
+exports.createNewMealPlan = createNewMealPlan;
+const updateMealPlan = async (req, res) => {
+    const mealPlan = await mealPlanService_1.mealPlanService.updateMealPlan(req.params.id, req.body);
+    res.status(200).json({ success: true, data: mealPlan });
 };
 exports.updateMealPlan = updateMealPlan;
-const deleteMealPlan = (req, res) => {
-    mealPlanService.deleteMealPlan(req.params.id);
+const deleteMealPlan = async (req, res) => {
+    await mealPlanService_1.mealPlanService.deleteMealPlan(req.params.id);
     res.status(204).send();
 };
 exports.deleteMealPlan = deleteMealPlan;

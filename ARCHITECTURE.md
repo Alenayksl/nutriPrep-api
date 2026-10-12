@@ -9,13 +9,15 @@ The API is organized around the request flow:
 - `src/routes/`: maps HTTP methods and resource paths to controllers.
 - `src/controllers/`: translates HTTP requests into service calls and formats JSON responses.
 - `src/services/`: owns business rules, filtering, pagination, and Prisma queries.
-- `src/middleware/`: shared concerns such as validation, error handling, JWT authentication, role authorization, and pagination parsing.
-- `src/models/`: temporary domain types and fixtures. These can be replaced by Prisma-generated types as persistence is migrated.
+- `src/middleware/`: shared concerns such as validation, error handling, JWT authentication, role authorization, and pagination parsing. Category creation is protected by `requireRole(Role.ADMIN)`.
+- `src/utils/prisma.ts`: owns the singleton `PrismaClient` instance used by database-backed services.
+- `src/models/`: request and domain input types. All four core entity services now use Prisma persistence.
+- `src/services/userService.ts`: manages User CRUD with bcrypt password hashing and public response sanitization; passwords are never returned.
 - `prisma/`: PostgreSQL schema and migrations for `User`, `Recipe`, `Category`, and `MealPlan`.
 
 ## Roles
 
-The Prisma `Role` enum is the source of truth: `GUEST`, `MEMBER`, and `ADMIN`. A future `authenticateJwt` middleware should attach the verified user to `req.user`; an `authorize(...roles)` middleware should then protect routes such as recipe administration and category management.
+The Prisma `Role` enum is the source of truth: `GUEST`, `MEMBER`, and `ADMIN`. A JWT authentication middleware must attach the verified user to `req.user`; `requireRole(...roles)` then protects routes such as category creation.
 
 Suggested policy:
 
@@ -35,4 +37,4 @@ Collection endpoints should accept query parameters such as `page`, `limit`, `se
 }
 ```
 
-This keeps controllers thin and allows the current in-memory services to be replaced by Prisma queries without changing the Next.js client contract.
+This keeps controllers thin and allows Prisma queries to evolve without changing the Next.js client contract.

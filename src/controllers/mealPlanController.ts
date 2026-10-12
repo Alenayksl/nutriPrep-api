@@ -1,31 +1,59 @@
 import { Request, Response } from "express";
-import { MealPlanInput } from "../models/mealPlan";
-import * as mealPlanService from "../services/mealPlanService";
+import { AppError } from "../errors/AppError";
+import { MealPlanFilters, MealPlanInput } from "../models/mealPlan";
+import { mealPlanService } from "../services/mealPlanService";
 
-export const getAllMealPlans = (req: Request, res: Response)=>{
-const mealPlans = mealPlanService.getMealPlans();
-res.status(200).json({success: true, count: mealPlans.length , data: mealPlans });
+const queryValue = (value: unknown): string | undefined => {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value) && typeof value[0] === "string") return value[0];
+  return undefined;
 };
 
-// POST /mealplans.
-export const createNewMealPlan = (req: Request<Record<string, never>, unknown, MealPlanInput>, res: Response) =>{
-    const newPlan = mealPlanService.createMealPlan(req.body);
+const parseQueryNumber = (value: unknown, name: string): number | undefined => {
+  const rawValue = queryValue(value);
+  if (rawValue === undefined) return undefined;
 
-    res.status(201).json({success: true, data: newPlan});
+  const parsedValue = Number(rawValue);
+  if (!Number.isInteger(parsedValue) || parsedValue < 1) {
+    throw new AppError(400, `${name} must be a positive integer.`);
+  }
+  return parsedValue;
 };
 
-// Get a meal plan by ID.
+const parseFilters = (query: Request["query"]): MealPlanFilters => {
+  const page = parseQueryNumber(query.page, "page") ?? 1;
+  const limit = parseQueryNumber(query.limit, "limit") ?? 20;
+  if (limit > 100) throw new AppError(400, "limit must be between 1 and 100.");
 
-export const getMealById = (req: Request<{ id: string }>, res: Response)=>{
-    res.status(200).json({success: true, data: mealPlanService.getMealPlan(req.params.id)});
+  return {
+    page,
+    limit,
+    userId: parseQueryNumber(query.userId, "userId"),
+    dayOfWeek: queryValue(query.dayOfWeek),
+    mealType: queryValue(query.mealType),
+  };
 };
 
-export const updateMealPlan = (req: Request<{ id: string }, unknown, MealPlanInput>, res: Response) => {
-    res.status(200).json({success: true, data: mealPlanService.updateMealPlan(req.params.id, req.body)});
+export const getAllMealPlans = async (req: Request, res: Response) => {
+  const result = await mealPlanService.getMealPlans(parseFilters(req.query));
+  res.status(200).json({ success: true, ...result });
 };
 
-export const deleteMealPlan = (req: Request<{ id: string }>, res: Response) => {
-    mealPlanService.deleteMealPlan(req.params.id);
-    res.status(204).send();
+export const getMealById = async (req: Request<{ id: string }>, res: Response) => {
+  res.status(200).json({ success: true, data: await mealPlanService.getMealPlan(req.params.id) });
 };
 
+export const createNewMealPlan = async (req: Request<Record<string, never>, unknown, MealPlanInput>, res: Response) => {
+  const mealPlan = await mealPlanService.createMealPlan(req.body);
+  res.status(201).json({ success: true, data: mealPlan });
+};
+
+export const updateMealPlan = async (req: Request<{ id: string }, unknown, MealPlanInput>, res: Response) => {
+  const mealPlan = await mealPlanService.updateMealPlan(req.params.id, req.body);
+  res.status(200).json({ success: true, data: mealPlan });
+};
+
+export const deleteMealPlan = async (req: Request<{ id: string }>, res: Response) => {
+  await mealPlanService.deleteMealPlan(req.params.id);
+  res.status(204).send();
+};

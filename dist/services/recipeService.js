@@ -1,44 +1,126 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.deleteRecipe = exports.updateRecipe = exports.createRecipe = exports.getRecipes = void 0;
+exports.recipeService = exports.RecipeService = void 0;
+const client_1 = require("@prisma/client");
 const AppError_1 = require("../errors/AppError");
-const category_1 = require("../models/category");
-const recipe_1 = require("../models/recipe");
-const user_1 = require("../models/user");
-const nextId = () => {
-    const highestId = recipe_1.recipes.reduce((highest, recipe) => Math.max(highest, Number(recipe.id) || 0), 0);
-    return (highestId + 1).toString();
-};
-const assertRelations = (input) => {
-    if (!category_1.categories.some((category) => category.id === input.categoryId)) {
-        throw new AppError_1.AppError(400, "The selected category does not exist.");
+const prisma_1 = require("../utils/prisma");
+const parseId = (id) => {
+    const parsedId = Number(id);
+    if (!Number.isInteger(parsedId) || parsedId < 1) {
+        throw new AppError_1.AppError(400, "Recipe id must be a positive integer.");
     }
-    if (!user_1.users.some((user) => user.id === input.authorId)) {
-        throw new AppError_1.AppError(400, "The selected user does not exist.");
+    return parsedId;
+};
+const recipeInclude = {
+    category: true,
+    author: {
+        select: { id: true, email: true, name: true, role: true },
+    },
+};
+const buildWhere = (filters) => ({
+    ...(filters.categoryId !== undefined && { categoryId: filters.categoryId }),
+    ...(filters.minCalories !== undefined || filters.maxCalories !== undefined
+        ? { calories: { gte: filters.minCalories, lte: filters.maxCalories } }
+        : {}),
+    ...(filters.minProtein !== undefined || filters.maxProtein !== undefined
+        ? { protein: { gte: filters.minProtein, lte: filters.maxProtein } }
+        : {}),
+    ...(filters.minCarbs !== undefined || filters.maxCarbs !== undefined
+        ? { carbs: { gte: filters.minCarbs, lte: filters.maxCarbs } }
+        : {}),
+    ...(filters.minFat !== undefined || filters.maxFat !== undefined
+        ? { fat: { gte: filters.minFat, lte: filters.maxFat } }
+        : {}),
+});
+const toCreateData = (input) => ({
+    title: input.title.trim(),
+    description: input.description?.trim(),
+    ingredients: input.ingredients,
+    instructions: input.instructions.trim(),
+    calories: input.calories,
+    protein: input.protein,
+    carbs: input.carbs,
+    fat: input.fat,
+    isPublic: input.isPublic ?? true,
+    category: { connect: { id: input.categoryId } },
+    author: { connect: { id: input.authorId } },
+});
+class RecipeService {
+    async getRecipes(filters) {
+        const where = buildWhere(filters);
+        const skip = (filters.page - 1) * filters.limit;
+        const [data, total] = await prisma_1.prisma.$transaction([
+            prisma_1.prisma.recipe.findMany({
+                where,
+                skip,
+                take: filters.limit,
+                orderBy: { createdAt: "desc" },
+                include: recipeInclude,
+            }),
+            prisma_1.prisma.recipe.count({ where }),
+        ]);
+        return {
+            data,
+            meta: {
+                page: filters.page,
+                limit: filters.limit,
+                total,
+                totalPages: Math.ceil(total / filters.limit),
+            },
+        };
     }
-};
-const getRecipes = () => recipe_1.recipes;
-exports.getRecipes = getRecipes;
-const createRecipe = (input) => {
-    assertRelations(input);
-    const recipe = { id: nextId(), ...input };
-    recipe_1.recipes.push(recipe);
-    return recipe;
-};
-exports.createRecipe = createRecipe;
-const updateRecipe = (id, input) => {
-    assertRelations(input);
-    const recipe = recipe_1.recipes.find((item) => item.id === id);
-    if (!recipe)
-        throw new AppError_1.AppError(404, "Recipe not found.");
-    Object.assign(recipe, input);
-    return recipe;
-};
-exports.updateRecipe = updateRecipe;
-const deleteRecipe = (id) => {
-    const index = recipe_1.recipes.findIndex((recipe) => recipe.id === id);
-    if (index === -1)
-        throw new AppError_1.AppError(404, "Recipe not found.");
-    recipe_1.recipes.splice(index, 1);
-};
-exports.deleteRecipe = deleteRecipe;
+    async getRecipe(id) {
+        const recipe = await prisma_1.prisma.recipe.findUnique({
+            where: { id: parseId(id) },
+            include: recipeInclude,
+        });
+        if (!recipe)
+            throw new AppError_1.AppError(404, "Recipe not found.");
+        return recipe;
+    }
+    async createRecipe(input) {
+        try {
+            return await prisma_1.prisma.recipe.create({
+                data: toCreateData(input),
+                include: recipeInclude,
+            });
+        }
+        catch (error) {
+            if (error instanceof client_1.Prisma.PrismaClientKnownRequestError && error.code === "P2003") {
+                throw new AppError_1.AppError(400, "The selected category or author does not exist.");
+            }
+            throw error;
+        }
+    }
+    async updateRecipe(id, input) {
+        try {
+            return await prisma_1.prisma.recipe.update({
+                where: { id: parseId(id) },
+                data: toCreateData(input),
+                include: recipeInclude,
+            });
+        }
+        catch (error) {
+            if (error instanceof client_1.Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
+                throw new AppError_1.AppError(404, "Recipe not found.");
+            }
+            if (error instanceof client_1.Prisma.PrismaClientKnownRequestError && error.code === "P2003") {
+                throw new AppError_1.AppError(400, "The selected category or author does not exist.");
+            }
+            throw error;
+        }
+    }
+    async deleteRecipe(id) {
+        try {
+            await prisma_1.prisma.recipe.delete({ where: { id: parseId(id) } });
+        }
+        catch (error) {
+            if (error instanceof client_1.Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
+                throw new AppError_1.AppError(404, "Recipe not found.");
+            }
+            throw error;
+        }
+    }
+}
+exports.RecipeService = RecipeService;
+exports.recipeService = new RecipeService();
