@@ -8,6 +8,7 @@ const cors_1 = __importDefault(require("cors"));
 const dotenv_1 = __importDefault(require("dotenv"));
 const express_1 = __importDefault(require("express"));
 const categoryRoutes_1 = __importDefault(require("./routes/categoryRoutes"));
+const authRoutes_1 = __importDefault(require("./routes/authRoutes"));
 const mealPlanRoutes_1 = __importDefault(require("./routes/mealPlanRoutes"));
 const recipeRoutes_1 = __importDefault(require("./routes/recipeRoutes"));
 const userRoutes_1 = __importDefault(require("./routes/userRoutes"));
@@ -45,6 +46,7 @@ const createServer = () => {
     app.use("/api/categories", categoryRoutes_1.default);
     app.use("/api/mealplans", mealPlanRoutes_1.default);
     app.use("/api/users", userRoutes_1.default);
+    app.use("/api/auth", authRoutes_1.default);
     app.use((_req, res) => {
         res.status(404).json({
             success: false,
