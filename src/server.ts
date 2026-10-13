@@ -2,6 +2,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import express, { Request, Response } from "express";
 import categoryRoutes from "./routes/categoryRoutes";
+import authRoutes from "./routes/authRoutes";
 import mealPlanRoutes from "./routes/mealPlanRoutes";
 import recipeRoutes from "./routes/recipeRoutes";
 import userRoutes from "./routes/userRoutes";
@@ -49,6 +50,7 @@ export const createServer = () => {
   app.use("/api/categories", categoryRoutes);
   app.use("/api/mealplans", mealPlanRoutes);
   app.use("/api/users", userRoutes);
+  app.use("/api/auth", authRoutes);
 
   app.use((_req: Request, res: Response) => {
     res.status(404).json({

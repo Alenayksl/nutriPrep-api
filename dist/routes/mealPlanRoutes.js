@@ -2,8 +2,10 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const mealPlanController_1 = require("../controllers/mealPlanController");
+const authentication_1 = require("../middleware/authentication");
 const validation_1 = require("../middleware/validation");
 const router = (0, express_1.Router)();
+router.use(authentication_1.authenticateToken);
 router.get('/', mealPlanController_1.getAllMealPlans);
 router.post('/', validation_1.validateMealPlan, mealPlanController_1.createNewMealPlan);
 router.get('/:id', mealPlanController_1.getMealById);
