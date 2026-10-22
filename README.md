@@ -24,6 +24,12 @@ npm run prisma:generate
 npx prisma migrate dev
 ```
 
+Seed the admin user (needed for category write routes; uses `ADMIN_EMAIL` / `ADMIN_PASSWORD` from `.env`):
+
+```bash
+npm run prisma:seed
+```
+
 Start the development server:
 
 ```bash
@@ -42,6 +48,8 @@ The API runs at `http://localhost:5000` by default.
 | `CORS_ORIGIN`    | Comma-separated frontend origins      | `http://localhost:3000`                                             |
 | `JWT_SECRET`     | Secret used to sign and verify tokens | Long random value                                                   |
 | `JWT_EXPIRES_IN` | Token lifetime                        | `1h`                                                                |
+| `ADMIN_EMAIL`    | Email of the seeded admin user        | `admin@nutriprep.local`                                             |
+| `ADMIN_PASSWORD` | Password of the seeded admin user     | Any local value                                                     |
 
 Never commit `.env`. Use `.env.example` as the configuration template.
 
@@ -53,6 +61,7 @@ npm run build            # Compile TypeScript to dist/
 npm start                # Start the compiled server
 npm run prisma:generate  # Generate Prisma Client
 npm run prisma:migrate   # Run Prisma migrations
+npm run prisma:seed      # Create or update the admin user
 ```
 
 ## Authentication
@@ -145,6 +154,16 @@ Collection responses include pagination metadata:
     "totalPages": 0
   }
 }
+```
+
+## Postman Collection
+
+`postman/NutriPrep-API.postman_collection.json` contains requests for every API method, including error cases (400, 401, 403, 404). Import it into Postman and run it with the Collection Runner: requests save `token`, `adminToken`, `userId`, `categoryId`, `recipeId` and `mealPlanId` into collection variables, and the last folder deletes the created data.
+
+It can also be run from the command line:
+
+```bash
+npx newman run postman/NutriPrep-API.postman_collection.json
 ```
 
 ## Project Structure
