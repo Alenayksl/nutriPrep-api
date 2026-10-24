@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { AppError } from "../errors/AppError";
 import { RecipeFilters, RecipeInput } from "../models/recipe";
+import { categoryService } from "../services/categoryService";
 import { recipeService } from "../services/recipeService";
 
 const queryValue = (value: unknown): string | undefined => {
@@ -48,6 +49,12 @@ const parseFilters = (query: Request["query"]): RecipeFilters => {
 
 export const getAllRecipes = async (req: Request, res: Response) => {
     const result = await recipeService.getRecipes(parseFilters(req.query));
+    res.status(200).json({ success: true, ...result });
+};
+
+export const getRecipesByCategory = async (req: Request<{ id: string }>, res: Response) => {
+    const category = await categoryService.getCategory(req.params.id);
+    const result = await recipeService.getRecipes({ ...parseFilters(req.query), categoryId: category.id });
     res.status(200).json({ success: true, ...result });
 };
 

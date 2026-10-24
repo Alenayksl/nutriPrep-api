@@ -630,6 +630,42 @@
           ]
         },
         {
+          "name": "Get Recipes By Category",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/categories/{{categoryId}}/recipes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "categories",
+                "{{categoryId}}",
+                "recipes"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Response is JSON\", () => pm.response.to.be.json);",
+                  "const body = pm.response.json();",
+                  "pm.test(\"All recipes belong to the category\", () => body.data.forEach((r) => pm.expect(r.categoryId).to.eql(Number(pm.collectionVariables.get(\"categoryId\")))));",
+                  "pm.test(\"Has pagination meta\", () => pm.expect(body).to.have.property(\"meta\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "Update Recipe",
           "request": {
             "method": "PUT",
@@ -1313,6 +1349,39 @@
               "path": [
                 "recipes",
                 "999999"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"Response is JSON\", () => pm.response.to.be.json);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "404 - Recipes Of Missing Category",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/categories/999999/recipes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "categories",
+                "999999",
+                "recipes"
               ]
             },
             "auth": {
