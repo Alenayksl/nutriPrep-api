@@ -113,6 +113,7 @@ Passwords are stored as bcrypt hashes and are never returned by the API. New use
 | `GET`  | `/api/categories/:id` | Read a category         |
 | `GET`  | `/api/categories/:id/recipes` | List recipes in a category |
 | `GET`  | `/api/recipes`        | List recipes            |
+| `GET`  | `/api/recipes/presets` | List nutrition presets |
 | `GET`  | `/api/recipes/:id`    | Read a recipe           |
 
 ### Protected Routes
@@ -140,6 +141,24 @@ Recipes of a single category (same pagination and nutrition filters):
 
 ```http
 GET /api/categories/8/recipes?page=1&limit=20&maxCalories=600
+```
+
+### Nutrition Presets
+
+Presets are named filters computed from the stored macros, so recipes never need to be tagged by hand:
+
+| Preset         | Rule               |
+| -------------- | ------------------ |
+| `high-protein` | protein >= 25 g    |
+| `high-carb`    | carbs >= 50 g      |
+| `low-calorie`  | calories <= 400    |
+| `low-fat`      | fat <= 10 g        |
+
+They work on both recipe listings and can be combined with commas (AND) or with explicit filters (the stricter bound wins):
+
+```http
+GET /api/categories/8/recipes?preset=high-carb
+GET /api/recipes?preset=high-protein,low-calorie
 ```
 
 Meal plan listing supports:

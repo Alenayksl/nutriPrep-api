@@ -666,6 +666,123 @@
           ]
         },
         {
+          "name": "Get Recipe Presets",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/recipes/presets",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "recipes",
+                "presets"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Response is JSON\", () => pm.response.to.be.json);",
+                  "pm.test(\"Lists high-protein preset\", () => pm.expect(pm.response.json().data.map((p) => p.name)).to.include(\"high-protein\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Category Recipes (High Protein)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/categories/{{categoryId}}/recipes?preset=high-protein",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "categories",
+                "{{categoryId}}",
+                "recipes"
+              ],
+              "query": [
+                {
+                  "key": "preset",
+                  "value": "high-protein"
+                }
+              ]
+            },
+            "description": "Recipes in the category with at least 25 g protein. Presets: high-protein, high-carb, low-calorie, low-fat.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Response is JSON\", () => pm.response.to.be.json);",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Created recipe is included\", () => pm.expect(body.data.map((r) => r.id)).to.include(Number(pm.collectionVariables.get(\"recipeId\"))));",
+                  "pm.test(\"Every recipe has protein >= 25\", () => body.data.forEach((r) => pm.expect(r.protein).to.be.at.least(25)));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Recipes (High Protein + Low Calorie)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/recipes?preset=high-protein,low-calorie",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "recipes"
+              ],
+              "query": [
+                {
+                  "key": "preset",
+                  "value": "high-protein,low-calorie"
+                }
+              ]
+            },
+            "description": "Comma-separated presets are combined with AND.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Response is JSON\", () => pm.response.to.be.json);",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Every recipe matches both presets\", () => body.data.forEach((r) => { pm.expect(r.protein).to.be.at.least(25); pm.expect(r.calories).to.be.at.most(400); }));",
+                  "pm.test(\"550 kcal recipe is excluded\", () => pm.expect(body.data.map((r) => r.id)).to.not.include(Number(pm.collectionVariables.get(\"recipeId\"))));"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "Update Recipe",
           "request": {
             "method": "PUT",
@@ -1330,6 +1447,43 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test(\"Status code is 401\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"Response is JSON\", () => pm.response.to.be.json);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "400 - Unknown Preset",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/recipes?preset=super-food",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "recipes"
+              ],
+              "query": [
+                {
+                  "key": "preset",
+                  "value": "super-food"
+                }
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 400\", () => pm.response.to.have.status(400));",
                   "pm.test(\"Response is JSON\", () => pm.response.to.be.json);"
                 ]
               }
