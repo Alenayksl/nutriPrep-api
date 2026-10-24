@@ -22,7 +22,8 @@ const isPositiveInteger = (value: unknown): value is number =>
   typeof value === "number" && Number.isInteger(value) && value > 0;
 
 const isCategoryInput: BodyValidator<CategoryInput> = (body): body is CategoryInput =>
-  isRecord(body) && isNonEmptyString(body.name);
+  isRecord(body) && isNonEmptyString(body.name) &&
+  (body.description === undefined || isNonEmptyString(body.description));
 
 const isRecipeInput: BodyValidator<RecipeInput> = (body): body is RecipeInput =>
   isRecord(body) &&

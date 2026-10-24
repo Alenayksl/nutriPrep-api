@@ -28,7 +28,9 @@ export class CategoryService {
   async createCategory(input: CategoryInput) {
     try {
       return await prisma.category.create({
-        data: { name: input.name.trim() },
+        data: { name: input.name.trim(),
+                description: input.description?.trim(),
+         },
       });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {

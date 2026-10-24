@@ -70,7 +70,6 @@ export class UserService {
     if (input.username !== undefined) data.name = input.username.trim();
     if (input.email !== undefined) data.email = input.email.trim().toLowerCase();
     if (input.password !== undefined) data.password = await bcrypt.hash(input.password, SALT_ROUNDS);
-
     if (Object.keys(data).length === 0) {
       throw new AppError(400, "At least one user field must be provided.");
     }
