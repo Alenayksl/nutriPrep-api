@@ -46,6 +46,10 @@
       "value": ""
     },
     {
+      "key": "adminRecipeId",
+      "value": ""
+    },
+    {
       "key": "mealPlanId",
       "value": ""
     }
@@ -513,6 +517,61 @@
           ]
         },
         {
+          "name": "Create Recipe (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/recipes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "recipes"
+              ]
+            },
+            "description": "ADMIN has every permission, including member actions.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Admin Oatmeal\",\n  \"description\": \"High-protein lunch bowl\",\n  \"ingredients\": [\n    \"chicken breast\",\n    \"rice\",\n    \"broccoli\"\n  ],\n  \"instructions\": \"Grill the chicken, cook the rice, steam the broccoli and combine.\",\n  \"calories\": 350,\n  \"protein\": 12,\n  \"carbs\": 55,\n  \"fat\": 7,\n  \"isPublic\": true,\n  \"categoryId\": {{categoryId}},\n  \"authorId\": {{userId}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 201\", () => pm.response.to.have.status(201));",
+                  "pm.test(\"Response is JSON\", () => pm.response.to.be.json);",
+                  "const body = pm.response.json();",
+                  "if (body.data && body.data.id) pm.collectionVariables.set(\"adminRecipeId\", body.data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "Get All Recipes",
           "request": {
             "method": "GET",
@@ -720,7 +779,7 @@
                 }
               ]
             },
-            "description": "Recipes in the category with at least 25 g protein. Presets: high-protein, high-carb, low-calorie, low-fat.",
+            "description": "Recipes in the category with protein at least 25.",
             "auth": {
               "type": "noauth"
             }
@@ -734,8 +793,137 @@
                   "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));",
                   "pm.test(\"Response is JSON\", () => pm.response.to.be.json);",
                   "const body = pm.response.json();",
-                  "pm.test(\"Created recipe is included\", () => pm.expect(body.data.map((r) => r.id)).to.include(Number(pm.collectionVariables.get(\"recipeId\"))));",
-                  "pm.test(\"Every recipe has protein >= 25\", () => body.data.forEach((r) => pm.expect(r.protein).to.be.at.least(25)));"
+                  "pm.test(\"Every recipe has protein at least 25\", () => body.data.forEach((r) => pm.expect(r.protein).to.be.at.least(25)));",
+                  "pm.test(\"Created recipe (45 g protein, 60 g carbs, 520 kcal, 12 g fat) is included\", () => pm.expect(body.data.map((r) => r.id)).to.include(Number(pm.collectionVariables.get(\"recipeId\"))));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Category Recipes (High Carb)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/categories/{{categoryId}}/recipes?preset=high-carb",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "categories",
+                "{{categoryId}}",
+                "recipes"
+              ],
+              "query": [
+                {
+                  "key": "preset",
+                  "value": "high-carb"
+                }
+              ]
+            },
+            "description": "Recipes in the category with carbs at least 50.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Response is JSON\", () => pm.response.to.be.json);",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Every recipe has carbs at least 50\", () => body.data.forEach((r) => pm.expect(r.carbs).to.be.at.least(50)));",
+                  "pm.test(\"Created recipe (45 g protein, 60 g carbs, 520 kcal, 12 g fat) is included\", () => pm.expect(body.data.map((r) => r.id)).to.include(Number(pm.collectionVariables.get(\"recipeId\"))));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Category Recipes (Low Calorie)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/categories/{{categoryId}}/recipes?preset=low-calorie",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "categories",
+                "{{categoryId}}",
+                "recipes"
+              ],
+              "query": [
+                {
+                  "key": "preset",
+                  "value": "low-calorie"
+                }
+              ]
+            },
+            "description": "Recipes in the category with calories at most 400.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Response is JSON\", () => pm.response.to.be.json);",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Every recipe has calories at most 400\", () => body.data.forEach((r) => pm.expect(r.calories).to.be.at.most(400)));",
+                  "pm.test(\"Created recipe (45 g protein, 60 g carbs, 520 kcal, 12 g fat) is excluded\", () => pm.expect(body.data.map((r) => r.id)).to.not.include(Number(pm.collectionVariables.get(\"recipeId\"))));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Category Recipes (Low Fat)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/categories/{{categoryId}}/recipes?preset=low-fat",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "categories",
+                "{{categoryId}}",
+                "recipes"
+              ],
+              "query": [
+                {
+                  "key": "preset",
+                  "value": "low-fat"
+                }
+              ]
+            },
+            "description": "Recipes in the category with fat at most 10.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Response is JSON\", () => pm.response.to.be.json);",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Every recipe has fat at most 10\", () => body.data.forEach((r) => pm.expect(r.fat).to.be.at.most(10)));",
+                  "pm.test(\"Created recipe (45 g protein, 60 g carbs, 520 kcal, 12 g fat) is excluded\", () => pm.expect(body.data.map((r) => r.id)).to.not.include(Number(pm.collectionVariables.get(\"recipeId\"))));"
                 ]
               }
             }
@@ -1650,6 +1838,44 @@
                 {
                   "key": "token",
                   "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete Recipe (Admin)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/recipes/{{adminRecipeId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "recipes",
+                "{{adminRecipeId}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
                   "type": "string"
                 }
               ]
