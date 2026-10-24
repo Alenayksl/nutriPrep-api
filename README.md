@@ -111,6 +111,7 @@ Passwords are stored as bcrypt hashes and are never returned by the API. New use
 | `POST` | `/api/users/register` | Register a member       |
 | `GET`  | `/api/categories`     | List categories         |
 | `GET`  | `/api/categories/:id` | Read a category         |
+| `GET`  | `/api/categories/:id/recipes` | List recipes in a category |
 | `GET`  | `/api/recipes`        | List recipes            |
 | `GET`  | `/api/recipes/:id`    | Read a recipe           |
 
@@ -133,6 +134,12 @@ Recipe listing supports:
 
 ```http
 GET /api/recipes?page=1&limit=20&categoryId=1&minProtein=20&maxCalories=600
+```
+
+Recipes of a single category (same pagination and nutrition filters):
+
+```http
+GET /api/categories/8/recipes?page=1&limit=20&maxCalories=600
 ```
 
 Meal plan listing supports:
