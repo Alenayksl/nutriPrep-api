@@ -118,7 +118,7 @@ Passwords are stored as bcrypt hashes and are never returned by the API. New use
 
 ### Protected Routes
 
-All protected routes require `Authorization: Bearer <token>`.
+All protected routes require `Authorization: Bearer <token>`. `ADMIN` has every permission, so it can also perform any `MEMBER` action.
 
 | Method                         | Route                      | Required role       |
 | ------------------------------ | -------------------------- | ------------------- |

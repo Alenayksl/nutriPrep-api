@@ -13,7 +13,7 @@ router.get('/', getAllRecipes);
 router.get('/presets', getRecipePresets);
 router.get('/:id', getRecipeById);
 
-router.use(authenticateToken, requireRole(Role.MEMBER, Role.ADMIN));
+router.use(authenticateToken, requireRole(Role.MEMBER));
 router.post('/', validateRecipe, createRecipe);
 router.put('/:id', validateRecipe, updateRecipe);
 router.delete('/:id', deleteRecipe);
