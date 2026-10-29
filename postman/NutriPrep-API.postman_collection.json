@@ -52,6 +52,10 @@
     {
       "key": "mealPlanId",
       "value": ""
+    },
+    {
+      "key": "day",
+      "value": "Monday"
     }
   ],
   "item": [
@@ -1031,7 +1035,7 @@
       "name": "5. Meal Plans",
       "item": [
         {
-          "name": "Create Meal Plan (Monday Breakfast)",
+          "name": "Create Meal Plan (Breakfast)",
           "request": {
             "method": "POST",
             "header": [
@@ -1049,7 +1053,7 @@
                 "mealplans"
               ]
             },
-            "description": "Each meal plan entry is one slot: user + day + meal type + recipe. A full day is one entry per meal.",
+            "description": "Each meal plan entry is one slot: user + day + meal type + recipe. Change the {{day}} collection variable (Monday … Sunday) to plan another day.",
             "auth": {
               "type": "bearer",
               "bearer": [
@@ -1062,7 +1066,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"userId\": {{userId}},\n  \"recipeId\": {{adminRecipeId}},\n  \"dayOfWeek\": \"Monday\",\n  \"mealType\": \"Breakfast\"\n}",
+              "raw": "{\n  \"userId\": {{userId}},\n  \"recipeId\": {{adminRecipeId}},\n  \"dayOfWeek\": \"{{day}}\",\n  \"mealType\": \"Breakfast\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1084,7 +1088,7 @@
           ]
         },
         {
-          "name": "Create Meal Plan (Monday Lunch)",
+          "name": "Create Meal Plan (Lunch)",
           "request": {
             "method": "POST",
             "header": [
@@ -1114,7 +1118,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"userId\": {{userId}},\n  \"recipeId\": {{recipeId}},\n  \"dayOfWeek\": \"Monday\",\n  \"mealType\": \"Lunch\"\n}",
+              "raw": "{\n  \"userId\": {{userId}},\n  \"recipeId\": {{recipeId}},\n  \"dayOfWeek\": \"{{day}}\",\n  \"mealType\": \"Lunch\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1138,7 +1142,7 @@
           ]
         },
         {
-          "name": "Create Meal Plan (Monday Dinner)",
+          "name": "Create Meal Plan (Dinner)",
           "request": {
             "method": "POST",
             "header": [
@@ -1168,7 +1172,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"userId\": {{userId}},\n  \"recipeId\": {{recipeId}},\n  \"dayOfWeek\": \"Monday\",\n  \"mealType\": \"Dinner\"\n}",
+              "raw": "{\n  \"userId\": {{userId}},\n  \"recipeId\": {{recipeId}},\n  \"dayOfWeek\": \"{{day}}\",\n  \"mealType\": \"Dinner\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1228,12 +1232,12 @@
           ]
         },
         {
-          "name": "Get Monday Meal Plan",
+          "name": "Get Meal Plan By Day",
           "request": {
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/mealplans?userId={{userId}}&dayOfWeek=Monday",
+              "raw": "{{baseUrl}}/mealplans?userId={{userId}}&dayOfWeek={{day}}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -1247,11 +1251,11 @@
                 },
                 {
                   "key": "dayOfWeek",
-                  "value": "Monday"
+                  "value": "{{day}}"
                 }
               ]
             },
-            "description": "All meals planned for Monday.",
+            "description": "All meals planned for the day in the {{day}} variable, Breakfast → Lunch → Dinner.",
             "auth": {
               "type": "bearer",
               "bearer": [
@@ -1272,8 +1276,8 @@
                   "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));",
                   "pm.test(\"Response is JSON\", () => pm.response.to.be.json);",
                   "const body = pm.response.json();",
-                  "pm.test(\"Monday has breakfast, lunch and dinner in order\", () => pm.expect(body.data.map((p) => p.mealType)).to.eql([\"Breakfast\", \"Lunch\", \"Dinner\"]));",
-                  "pm.test(\"Every entry is on Monday\", () => body.data.forEach((p) => pm.expect(p.dayOfWeek).to.eql(\"Monday\")));"
+                  "pm.test(\"Day has breakfast, lunch and dinner in order\", () => pm.expect(body.data.map((p) => p.mealType)).to.eql([\"Breakfast\", \"Lunch\", \"Dinner\"]));",
+                  "pm.test(\"Every entry is on the selected day\", () => body.data.forEach((p) => pm.expect(p.dayOfWeek).to.eql(pm.collectionVariables.get(\"day\"))));"
                 ]
               }
             }
@@ -1318,7 +1322,7 @@
                   "pm.test(\"Response is JSON\", () => pm.response.to.be.json);",
                   "const week = pm.response.json().data;",
                   "pm.test(\"Seven days in calendar order\", () => pm.expect(week.days.map((d) => d.dayOfWeek)).to.eql([\"Monday\", \"Tuesday\", \"Wednesday\", \"Thursday\", \"Friday\", \"Saturday\", \"Sunday\"]));",
-                  "pm.test(\"Monday has all three meals\", () => [\"Breakfast\", \"Lunch\", \"Dinner\"].forEach((m) => pm.expect(week.days[0].meals[m]).to.not.be.null));",
+                  "pm.test(\"Selected day has all three meals\", () => { const day = week.days.find((d) => d.dayOfWeek === pm.collectionVariables.get(\"day\")); [\"Breakfast\", \"Lunch\", \"Dinner\"].forEach((m) => pm.expect(day.meals[m]).to.not.be.null); });",
                   "pm.test(\"Week totals are present\", () => pm.expect(week.weekTotals).to.have.all.keys(\"calories\", \"protein\", \"carbs\", \"fat\"));"
                 ]
               }
@@ -1331,7 +1335,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/mealplans?page=1&limit=10&userId={{userId}}&dayOfWeek=Monday&mealType=Lunch",
+              "raw": "{{baseUrl}}/mealplans?page=1&limit=10&userId={{userId}}&dayOfWeek={{day}}&mealType=Lunch",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -1353,7 +1357,7 @@
                 },
                 {
                   "key": "dayOfWeek",
-                  "value": "Monday"
+                  "value": "{{day}}"
                 },
                 {
                   "key": "mealType",
@@ -1444,6 +1448,7 @@
                 "{{mealPlanId}}"
               ]
             },
+            "description": "Swaps the recipe of the lunch slot.",
             "auth": {
               "type": "bearer",
               "bearer": [
@@ -1456,7 +1461,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"userId\": {{userId}},\n  \"recipeId\": {{recipeId}},\n  \"dayOfWeek\": \"Tuesday\",\n  \"mealType\": \"Dinner\"\n}",
+              "raw": "{\n  \"userId\": {{userId}},\n  \"recipeId\": {{adminRecipeId}},\n  \"dayOfWeek\": \"{{day}}\",\n  \"mealType\": \"Lunch\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2157,7 +2162,7 @@
                 "mealplans"
               ]
             },
-            "description": "Monday Breakfast is already planned in the Meal Plans folder.",
+            "description": "Breakfast on {{day}} is already planned in the Meal Plans folder.",
             "auth": {
               "type": "bearer",
               "bearer": [
@@ -2170,7 +2175,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"userId\": {{userId}},\n  \"recipeId\": {{recipeId}},\n  \"dayOfWeek\": \"Monday\",\n  \"mealType\": \"Breakfast\"\n}",
+              "raw": "{\n  \"userId\": {{userId}},\n  \"recipeId\": {{recipeId}},\n  \"dayOfWeek\": \"{{day}}\",\n  \"mealType\": \"Breakfast\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
