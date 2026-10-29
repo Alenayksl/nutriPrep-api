@@ -34,6 +34,16 @@ const buildWhere = (filters: RecipeFilters): Prisma.RecipeWhereInput => ({
     : {}),
 });
 
+// Prisma reports a missing connect target as P2025, which looks like "recipe not found", so check up front.
+const assertReferencesExist = async (input: RecipeInput): Promise<void> => {
+  const [category, author] = await Promise.all([
+    prisma.category.findUnique({ where: { id: input.categoryId }, select: { id: true } }),
+    prisma.user.findUnique({ where: { id: input.authorId }, select: { id: true } }),
+  ]);
+  if (!category) throw new AppError(400, `Category ${input.categoryId} does not exist.`);
+  if (!author) throw new AppError(400, `Author (user) ${input.authorId} does not exist.`);
+};
+
 const toCreateData = (input: RecipeInput): Prisma.RecipeCreateInput => ({
   title: input.title.trim(),
   description: input.description?.trim(),
@@ -86,6 +96,7 @@ export class RecipeService {
   }
 
   async createRecipe(input: RecipeInput) {
+    await assertReferencesExist(input);
     try {
       return await prisma.recipe.create({
         data: toCreateData(input),
@@ -100,9 +111,11 @@ export class RecipeService {
   }
 
   async updateRecipe(id: string, input: RecipeInput) {
+    const recipeId = parseId(id);
+    await assertReferencesExist(input);
     try {
       return await prisma.recipe.update({
-        where: { id: parseId(id) },
+        where: { id: recipeId },
         data: toCreateData(input),
         include: recipeInclude,
       });

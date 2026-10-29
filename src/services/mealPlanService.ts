@@ -39,6 +39,16 @@ const toMacroStatistics = (
     { calories: 0, protein: 0, carbs: 0, fat: 0 },
   );
 
+// Prisma reports a missing connect target as P2025, which looks like "meal plan not found", so check up front.
+const assertReferencesExist = async (input: MealPlanInput): Promise<void> => {
+  const [user, recipe] = await Promise.all([
+    prisma.user.findUnique({ where: { id: input.userId }, select: { id: true } }),
+    prisma.recipe.findUnique({ where: { id: input.recipeId }, select: { id: true } }),
+  ]);
+  if (!user) throw new AppError(400, `User ${input.userId} does not exist.`);
+  if (!recipe) throw new AppError(400, `Recipe ${input.recipeId} does not exist.`);
+};
+
 export class MealPlanService {
   async getMealPlans(filters: MealPlanFilters) {
     const where = buildWhere(filters);
@@ -91,6 +101,7 @@ export class MealPlanService {
   }
 
   async createMealPlan(input: MealPlanInput) {
+    await assertReferencesExist(input);
     try {
       return await prisma.mealPlan.create({
         data: {
@@ -110,9 +121,11 @@ export class MealPlanService {
   }
 
   async updateMealPlan(id: string, input: MealPlanInput) {
+    const mealPlanId = parseId(id, "Meal plan");
+    await assertReferencesExist(input);
     try {
       return await prisma.mealPlan.update({
-        where: { id: parseId(id, "Meal plan") },
+        where: { id: mealPlanId },
         data: {
           user: { connect: { id: input.userId } },
           recipe: { connect: { id: input.recipeId } },
