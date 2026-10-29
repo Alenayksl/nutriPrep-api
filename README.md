@@ -128,6 +128,7 @@ All protected routes require `Authorization: Bearer <token>`. `ADMIN` has every 
 | `GET`                          | `/api/users/:id`           | Authenticated user  |
 | `PUT`, `DELETE`                | `/api/users/:id`           | Authenticated user  |
 | `GET`                          | `/api/users/:id/dashboard` | Authenticated user  |
+| `GET`                          | `/api/users/:id/mealplans/weekly` | Authenticated user |
 
 ## Filtering and Pagination
 
@@ -165,6 +166,15 @@ Meal plan listing supports:
 
 ```http
 GET /api/mealplans?page=1&limit=20&userId=1&dayOfWeek=Monday&mealType=Lunch
+```
+
+### Meal Plans
+
+A meal plan entry is one slot: user + `dayOfWeek` + `mealType` + recipe. `dayOfWeek` must be `Monday`…`Sunday` and `mealType` must be `Breakfast`, `Lunch` or `Dinner`; each user can have only one entry per day and meal (a second one returns `409`). Listings are sorted Monday → Sunday and Breakfast → Lunch → Dinner.
+
+```http
+GET /api/mealplans?userId=1&dayOfWeek=Monday   # one day
+GET /api/users/1/mealplans/weekly             # whole week, grouped by day with daily and weekly macro totals
 ```
 
 Collection responses include pagination metadata:

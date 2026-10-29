@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { AppError } from "../errors/AppError";
-import { MealPlanFilters, MealPlanInput } from "../models/mealPlan";
+import { DAYS_OF_WEEK, MEAL_TYPES, MealPlanFilters, MealPlanInput, isDayOfWeek, isMealType } from "../models/mealPlan";
 import { mealPlanService } from "../services/mealPlanService";
 
 const queryValue = (value: unknown): string | undefined => {
@@ -29,14 +29,30 @@ const parseFilters = (query: Request["query"]): MealPlanFilters => {
     page,
     limit,
     userId: parseQueryNumber(query.userId, "userId"),
-    dayOfWeek: queryValue(query.dayOfWeek),
-    mealType: queryValue(query.mealType),
+    dayOfWeek: parseQueryOption(query.dayOfWeek, "dayOfWeek", DAYS_OF_WEEK, isDayOfWeek),
+    mealType: parseQueryOption(query.mealType, "mealType", MEAL_TYPES, isMealType),
   };
+};
+
+const parseQueryOption = <T extends string>(
+  value: unknown,
+  name: string,
+  allowed: readonly T[],
+  isAllowed: (value: unknown) => value is T,
+): T | undefined => {
+  const rawValue = queryValue(value);
+  if (rawValue === undefined) return undefined;
+  if (!isAllowed(rawValue)) throw new AppError(400, `${name} must be one of ${allowed.join(", ")}.`);
+  return rawValue;
 };
 
 export const getAllMealPlans = async (req: Request, res: Response) => {
   const result = await mealPlanService.getMealPlans(parseFilters(req.query));
   res.status(200).json({ success: true, ...result });
+};
+
+export const getWeeklyMealPlan = async (req: Request<{ id: string }>, res: Response) => {
+  res.status(200).json({ success: true, data: await mealPlanService.getWeeklyPlan(req.params.id) });
 };
 
 export const getMealById = async (req: Request<{ id: string }>, res: Response) => {

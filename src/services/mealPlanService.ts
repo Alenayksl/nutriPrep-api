@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { AppError } from "../errors/AppError";
-import { MealPlanFilters, MealPlanInput, MacroStatistics } from "../models/mealPlan";
+import { DAYS_OF_WEEK, DayOfWeek, MEAL_TYPES, MealPlanFilters, MealPlanInput, MacroStatistics, MealType } from "../models/mealPlan";
 import { prisma } from "../utils/prisma";
 
 const parseId = (id: string, resource: string): number => {
@@ -39,6 +39,21 @@ const toMacroStatistics = (
     { calories: 0, protein: 0, carbs: 0, fat: 0 },
   );
 
+// dayOfWeek and mealType are stored as strings, so the database would sort them alphabetically
+// (Friday before Monday, Dinner before Lunch); sort by calendar and meal order instead.
+const compareSlots = (
+  a: { userId: number; dayOfWeek: string; mealType: string },
+  b: { userId: number; dayOfWeek: string; mealType: string },
+): number =>
+  a.userId - b.userId ||
+  DAYS_OF_WEEK.indexOf(a.dayOfWeek as DayOfWeek) - DAYS_OF_WEEK.indexOf(b.dayOfWeek as DayOfWeek) ||
+  MEAL_TYPES.indexOf(a.mealType as MealType) - MEAL_TYPES.indexOf(b.mealType as MealType);
+
+const toSlotConflict = (error: unknown, input: MealPlanInput): unknown =>
+  error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002"
+    ? new AppError(409, `User ${input.userId} already has ${input.mealType} planned for ${input.dayOfWeek}. Update that entry instead.`)
+    : error;
+
 // Prisma reports a missing connect target as P2025, which looks like "meal plan not found", so check up front.
 const assertReferencesExist = async (input: MealPlanInput): Promise<void> => {
   const [user, recipe] = await Promise.all([
@@ -51,22 +66,15 @@ const assertReferencesExist = async (input: MealPlanInput): Promise<void> => {
 
 export class MealPlanService {
   async getMealPlans(filters: MealPlanFilters) {
-    const where = buildWhere(filters);
+    // A user's plan has at most 21 slots, so sorting in memory before paginating stays cheap.
+    const plans = await prisma.mealPlan.findMany({ where: buildWhere(filters), include: mealPlanInclude });
+    plans.sort(compareSlots);
+
+    const total = plans.length;
     const skip = (filters.page - 1) * filters.limit;
 
-    const [data, total] = await prisma.$transaction([
-      prisma.mealPlan.findMany({
-        where,
-        skip,
-        take: filters.limit,
-        orderBy: [{ dayOfWeek: "asc" }, { mealType: "asc" }],
-        include: mealPlanInclude,
-      }),
-      prisma.mealPlan.count({ where }),
-    ]);
-
     return {
-      data,
+      data: plans.slice(skip, skip + filters.limit),
       meta: {
         page: filters.page,
         limit: filters.limit,
@@ -90,14 +98,33 @@ export class MealPlanService {
     const numericUserId = parseId(userId, "User");
     const plans = await prisma.mealPlan.findMany({
       where: { userId: numericUserId },
-      orderBy: [{ dayOfWeek: "asc" }, { mealType: "asc" }],
       include: mealPlanInclude,
     });
+    plans.sort(compareSlots);
 
     return {
       plans,
       totalMacroStatistics: toMacroStatistics(plans),
     };
+  }
+
+  // Every day of the week with a Breakfast/Lunch/Dinner slot each (null when nothing is planned).
+  async getWeeklyPlan(userId: string) {
+    const numericUserId = parseId(userId, "User");
+    const user = await prisma.user.findUnique({ where: { id: numericUserId }, select: { id: true } });
+    if (!user) throw new AppError(404, "User not found.");
+
+    const { plans, totalMacroStatistics } = await this.getActivePlan(userId);
+    const days = DAYS_OF_WEEK.map((dayOfWeek) => {
+      const dayPlans = plans.filter((plan) => plan.dayOfWeek === dayOfWeek);
+      const meals = Object.fromEntries(
+        MEAL_TYPES.map((mealType) => [mealType, dayPlans.find((plan) => plan.mealType === mealType) ?? null]),
+      ) as Record<MealType, (typeof plans)[number] | null>;
+
+      return { dayOfWeek, meals, totals: toMacroStatistics(dayPlans) };
+    });
+
+    return { userId: numericUserId, days, weekTotals: totalMacroStatistics };
   }
 
   async createMealPlan(input: MealPlanInput) {
@@ -116,7 +143,7 @@ export class MealPlanService {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2003") {
         throw new AppError(400, "The selected user or recipe does not exist.");
       }
-      throw error;
+      throw toSlotConflict(error, input);
     }
   }
 
@@ -141,7 +168,7 @@ export class MealPlanService {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2003") {
         throw new AppError(400, "The selected user or recipe does not exist.");
       }
-      throw error;
+      throw toSlotConflict(error, input);
     }
   }
 

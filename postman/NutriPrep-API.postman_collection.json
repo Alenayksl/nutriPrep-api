@@ -1031,7 +1031,60 @@
       "name": "5. Meal Plans",
       "item": [
         {
-          "name": "Create Meal Plan",
+          "name": "Create Meal Plan (Monday Breakfast)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/mealplans",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "mealplans"
+              ]
+            },
+            "description": "Each meal plan entry is one slot: user + day + meal type + recipe. A full day is one entry per meal.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": {{userId}},\n  \"recipeId\": {{adminRecipeId}},\n  \"dayOfWeek\": \"Monday\",\n  \"mealType\": \"Breakfast\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 201\", () => pm.response.to.have.status(201));",
+                  "pm.test(\"Response is JSON\", () => pm.response.to.be.json);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Meal Plan (Monday Lunch)",
           "request": {
             "method": "POST",
             "header": [
@@ -1085,6 +1138,58 @@
           ]
         },
         {
+          "name": "Create Meal Plan (Monday Dinner)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/mealplans",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "mealplans"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": {{userId}},\n  \"recipeId\": {{recipeId}},\n  \"dayOfWeek\": \"Monday\",\n  \"mealType\": \"Dinner\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 201\", () => pm.response.to.have.status(201));",
+                  "pm.test(\"Response is JSON\", () => pm.response.to.be.json);"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "Get All Meal Plans",
           "request": {
             "method": "GET",
@@ -1117,6 +1222,104 @@
                 "exec": [
                   "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));",
                   "pm.test(\"Response is JSON\", () => pm.response.to.be.json);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Monday Meal Plan",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/mealplans?userId={{userId}}&dayOfWeek=Monday",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "mealplans"
+              ],
+              "query": [
+                {
+                  "key": "userId",
+                  "value": "{{userId}}"
+                },
+                {
+                  "key": "dayOfWeek",
+                  "value": "Monday"
+                }
+              ]
+            },
+            "description": "All meals planned for Monday.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Response is JSON\", () => pm.response.to.be.json);",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Monday has breakfast, lunch and dinner in order\", () => pm.expect(body.data.map((p) => p.mealType)).to.eql([\"Breakfast\", \"Lunch\", \"Dinner\"]));",
+                  "pm.test(\"Every entry is on Monday\", () => body.data.forEach((p) => pm.expect(p.dayOfWeek).to.eql(\"Monday\")));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Weekly Meal Plan",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/users/{{userId}}/mealplans/weekly",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "{{userId}}",
+                "mealplans",
+                "weekly"
+              ]
+            },
+            "description": "The whole week, Monday to Sunday, each day with Breakfast/Lunch/Dinner (null when empty) and daily macro totals.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Response is JSON\", () => pm.response.to.be.json);",
+                  "const week = pm.response.json().data;",
+                  "pm.test(\"Seven days in calendar order\", () => pm.expect(week.days.map((d) => d.dayOfWeek)).to.eql([\"Monday\", \"Tuesday\", \"Wednesday\", \"Thursday\", \"Friday\", \"Saturday\", \"Sunday\"]));",
+                  "pm.test(\"Monday has all three meals\", () => [\"Breakfast\", \"Lunch\", \"Dinner\"].forEach((m) => pm.expect(week.days[0].meals[m]).to.not.be.null));",
+                  "pm.test(\"Week totals are present\", () => pm.expect(week.weekTotals).to.have.all.keys(\"calories\", \"protein\", \"carbs\", \"fat\"));"
                 ]
               }
             }
@@ -1834,6 +2037,155 @@
                   "pm.test(\"Status code is 400\", () => pm.response.to.have.status(400));",
                   "pm.test(\"Response is JSON\", () => pm.response.to.be.json);",
                   "pm.test(\"Names the missing recipe\", () => pm.expect(pm.response.json().message).to.include(\"Recipe 999999\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "400 - Invalid Day Of Week",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/mealplans",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "mealplans"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": {{userId}},\n  \"recipeId\": {{recipeId}},\n  \"dayOfWeek\": \"Mondey\",\n  \"mealType\": \"Lunch\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"Response is JSON\", () => pm.response.to.be.json);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "400 - Invalid Day Filter",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/mealplans?dayOfWeek=Funday",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "mealplans"
+              ],
+              "query": [
+                {
+                  "key": "dayOfWeek",
+                  "value": "Funday"
+                }
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"Response is JSON\", () => pm.response.to.be.json);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "409 - Duplicate Meal Slot",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/mealplans",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "mealplans"
+              ]
+            },
+            "description": "Monday Breakfast is already planned in the Meal Plans folder.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": {{userId}},\n  \"recipeId\": {{recipeId}},\n  \"dayOfWeek\": \"Monday\",\n  \"mealType\": \"Breakfast\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 409\", () => pm.response.to.have.status(409));",
+                  "pm.test(\"Response is JSON\", () => pm.response.to.be.json);"
                 ]
               }
             }

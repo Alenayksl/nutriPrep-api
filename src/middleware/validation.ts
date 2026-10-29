@@ -1,6 +1,6 @@
 import { RequestHandler } from "express";
 import { CategoryInput } from "../models/category";
-import { MealPlanInput } from "../models/mealPlan";
+import { DAYS_OF_WEEK, MEAL_TYPES, MealPlanInput, isDayOfWeek, isMealType } from "../models/mealPlan";
 import { RecipeInput } from "../models/recipe";
 import { UserRegistrationInput, UserUpdateInput } from "../models/user";
 
@@ -43,8 +43,8 @@ const isMealPlanInput: BodyValidator<MealPlanInput> = (body): body is MealPlanIn
   isRecord(body) &&
   isPositiveInteger(body.userId) &&
   isPositiveInteger(body.recipeId) &&
-  isNonEmptyString(body.dayOfWeek) &&
-  isNonEmptyString(body.mealType);
+  isDayOfWeek(body.dayOfWeek) &&
+  isMealType(body.mealType);
 
 const isUserRegistrationInput: BodyValidator<UserRegistrationInput> = (body): body is UserRegistrationInput =>
   isRecord(body) &&
@@ -74,6 +74,9 @@ const validate = <T>(validator: BodyValidator<T>, message: string): RequestHandl
 
 export const validateCategory = validate(isCategoryInput, "Category name is required.");
 export const validateRecipe = validate(isRecipeInput, "Recipe fields must be valid and complete.");
-export const validateMealPlan = validate(isMealPlanInput, "Meal plan fields must be valid and complete.");
+export const validateMealPlan = validate(
+  isMealPlanInput,
+  `Meal plan fields must be valid and complete. dayOfWeek must be one of ${DAYS_OF_WEEK.join(", ")}; mealType must be one of ${MEAL_TYPES.join(", ")}.`,
+);
 export const validateUserRegistration = validate(isUserRegistrationInput, "Username, email, and password are required.");
 export const validateUserUpdate = validate(isUserUpdateInput, "At least one valid user field is required.");
