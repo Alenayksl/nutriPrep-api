@@ -212,7 +212,10 @@ Protected routes follow RFC 6750: `401` with `WWW-Authenticate: Bearer error="in
 | `GET`  | `/api/categories/:id/recipes` | List recipes in a category |
 | `GET`  | `/api/recipes`        | List recipes            |
 | `GET`  | `/api/recipes/presets` | List nutrition presets |
+| `GET`  | `/api/recipes/popular` | Best recipes: public only, most saved first |
 | `GET`  | `/api/recipes/:id`    | Read a recipe           |
+| `GET`  | `/api/mealplans/public` | List shared weekly plans |
+| `GET`  | `/api/mealplans/public/:userId` | Read one user's shared weekly plan |
 
 Public reads still work without a token. A request that **does** send a token must have the read scope for that route, or it gets `403 insufficient_scope`:
 
@@ -220,7 +223,8 @@ Public reads still work without a token. A request that **does** send a token mu
 | ------------------------------------------------------------- | ----------------------------------- |
 | `GET /api/categories`, `GET /api/categories/:id`              | `categories:read`                   |
 | `GET /api/categories/:id/recipes`                             | `categories:read`, `recipes:read`   |
-| `GET /api/recipes`, `GET /api/recipes/presets`, `GET /api/recipes/:id` | `recipes:read`             |
+| `GET /api/recipes`, `/recipes/presets`, `/recipes/popular`, `/recipes/:id` | `recipes:read`          |
+| `GET /api/mealplans/public`, `GET /api/mealplans/public/:userId` | `recipes:read`                   |
 
 Every role, `GUEST` included, has both read scopes. A token requested with only `scope=profile` cannot read them.
 
@@ -234,6 +238,7 @@ All protected routes require `Authorization: Bearer <access_token>` with the lis
 | `POST`, `PUT`, `DELETE`        | `/api/categories`                 | `categories:write`                 | -                                 |
 | `POST`                         | `/api/recipes`                    | `recipes:write`                    | `authorId` defaults to the caller |
 | `PUT`, `DELETE`                | `/api/recipes/:id`                | `recipes:write`                    | Recipe author only                |
+| `PUT`                          | `/api/recipes/:id/visibility`     | `recipes:write`                    | Recipe author only                |
 | `GET`                          | `/api/mealplans`                  | `mealplans:read`                   | Lists the caller's plans only     |
 | `GET`                          | `/api/mealplans/:id`              | `mealplans:read`                   | Plan owner only                   |
 | `POST`                         | `/api/mealplans`                  | `mealplans:write`                  | `userId` defaults to the caller   |
@@ -241,8 +246,11 @@ All protected routes require `Authorization: Bearer <access_token>` with the lis
 | `GET`, `PUT`, `DELETE`         | `/api/users/:id`                  | `profile`                          | That user only                    |
 | `GET`                          | `/api/users/:id/dashboard`        | `profile`, `mealplans:read`        | That user only                    |
 | `GET`                          | `/api/users/:id/mealplans/weekly` | `profile`, `mealplans:read`        | That user only                    |
+| `PUT`                          | `/api/users/:id/mealplans/visibility` | `profile`, `mealplans:write`   | That user only                    |
 
 Breaking another user's ownership rule returns `403`. Members cannot set `authorId` or `userId` to another user; only an `ADMIN` can.
+
+Deleting a user (by themself or by an `ADMIN`) also deletes their recipes, meal plans and refresh tokens. Other users' meal plan slots that used one of those recipes are removed too.
 
 Recipe reads stay public, but `isPublic: false` recipes are visible only to their author and to `ADMIN`. Send a token on `GET /api/recipes`, `GET /api/recipes/:id` or `GET /api/categories/:id/recipes` to include your own private recipes. Other users get `404` for them, and they cannot be added to another user's meal plan. If a token is sent on these public routes, it must be valid.
 
@@ -277,6 +285,54 @@ They work on both recipe listings and can be combined with commas (AND) or with 
 GET /api/categories/8/recipes?preset=high-carb
 GET /api/recipes?preset=high-protein,low-calorie
 ```
+
+Sorting and system recipes:
+
+```http
+GET /api/recipes?sort=popular          # most saved into meal plans first (default: sort=newest)
+GET /api/recipes?system=true           # only NutriPrep default recipes (system=false: only user recipes)
+GET /api/recipes/popular?categoryId=8  # "best recipes": public only, always sorted by popularity
+```
+
+Every recipe response has `savedCount` (how many meal plan slots use it, counted anonymously, private plans included), `isSystem`, and `author: { id, username }`. Author emails are never returned.
+
+## Sharing: Public and Private
+
+Recipes and weekly meal plans work the same way: the owner decides who sees them, and public ones appear in "best" listings.
+
+|                     | Recipes                                   | Weekly meal plans                                  |
+| ------------------- | ----------------------------------------- | -------------------------------------------------- |
+| Default             | Public (`isPublic` defaults to `true`)    | Private                                            |
+| Share / hide        | `PUT /api/recipes/:id/visibility`         | `PUT /api/users/:id/mealplans/visibility`          |
+| Public listing      | `GET /api/recipes`, `GET /api/recipes/popular` | `GET /api/mealplans/public`, `GET /api/mealplans/public/:userId` |
+| Who sees private    | Author and `ADMIN`                        | Owner and `ADMIN`                                  |
+
+```http
+PUT /api/recipes/12/visibility
+Authorization: Bearer <access_token>
+Content-Type: application/json
+
+{ "isPublic": false }
+```
+
+```http
+PUT /api/users/5/mealplans/visibility
+Authorization: Bearer <access_token>
+Content-Type: application/json
+
+{ "isPublic": true }
+```
+
+- A shared weekly plan shows the owner as `{ id, username }` (no email) with all seven days, the daily and weekly macro totals, and `sharedAt`. Shared plans are listed most recently shared first.
+- Private recipes never appear in a shared plan; their slots show as `null`.
+- An unshared plan answers `404` on `GET /api/mealplans/public/:userId`.
+- Saving any public recipe into a private plan is always allowed. It counts toward the recipe's `savedCount`, but nobody can see who saved it.
+
+### System recipes
+
+`ADMIN` can create default NutriPrep recipes with `"isSystem": true`. System recipes are always public (`isPublic: false` → `400`), cannot be hidden, and only `ADMIN` can set or remove the flag (otherwise `403`). Omitting `isSystem` on `PUT` keeps the current value.
+
+## Meal Plan Filters
 
 Meal plan listing supports:
 

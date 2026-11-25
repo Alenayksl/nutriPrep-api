@@ -12,6 +12,7 @@ const publicUserSelect = {
   email: true,
   name: true,
   role: true,
+  mealPlanSharedAt: true,
   createdAt: true,
   updatedAt: true,
 } satisfies Prisma.UserSelect;
@@ -29,6 +30,7 @@ const toPublicUser = (user: Prisma.UserGetPayload<{ select: typeof publicUserSel
   username: user.name,
   email: user.email,
   role: user.role,
+  isMealPlanPublic: user.mealPlanSharedAt !== null,
   createdAt: user.createdAt,
   updatedAt: user.updatedAt,
 });
@@ -93,15 +95,8 @@ export class UserService {
   }
 
   async deleteUser(id: string): Promise<void> {
-    const userId = parseUserId(id);
-    // Recipe.authorId is ON DELETE RESTRICT (meal plans cascade), so check authored recipes first.
-    const recipeCount = await prisma.recipe.count({ where: { authorId: userId } });
-    if (recipeCount > 0) {
-      throw new AppError(409, `This user still authors ${recipeCount} recipe(s). Delete those recipes first.`);
-    }
-
     try {
-      await prisma.user.delete({ where: { id: userId } });
+      await prisma.user.delete({ where: { id: parseUserId(id) } });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
         throw new AppError(404, "User not found.");
@@ -130,6 +125,7 @@ export class UserService {
       email: user.email,
       name: user.name,
       role: user.role,
+      mealPlanSharedAt: user.mealPlanSharedAt,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     });

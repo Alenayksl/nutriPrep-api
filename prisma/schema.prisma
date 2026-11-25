@@ -8,16 +8,17 @@ datasource db {
 }
 
 model User {
-  id            Int            @id @default(autoincrement())
-  email         String         @unique
-  password      String
-  name          String?
-  role          Role           @default(MEMBER)
-  recipes       Recipe[]
-  mealPlans     MealPlan[]
-  refreshTokens RefreshToken[]
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  id               Int            @id @default(autoincrement())
+  email            String         @unique
+  password         String
+  name             String?
+  role             Role           @default(MEMBER)
+  recipes          Recipe[]
+  mealPlans        MealPlan[]
+  refreshTokens    RefreshToken[]
+  mealPlanSharedAt DateTime?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
 }
 
 model Category {
@@ -38,10 +39,11 @@ model Recipe {
   carbs        Float?
   fat          Float?
   isPublic     Boolean    @default(true)
+  isSystem     Boolean    @default(false)
   categoryId   Int
   category     Category   @relation(fields: [categoryId], references: [id])
   authorId     Int
-  author       User       @relation(fields: [authorId], references: [id])
+  author       User       @relation(fields: [authorId], references: [id], onDelete: Cascade)
   mealPlans    MealPlan[]
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt

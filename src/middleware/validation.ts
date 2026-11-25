@@ -1,7 +1,7 @@
 import { RequestHandler } from "express";
 import { CategoryInput } from "../models/category";
-import { DAYS_OF_WEEK, MEAL_TYPES, MealPlanInput, isDayOfWeek, isMealType } from "../models/mealPlan";
-import { RecipeInput } from "../models/recipe";
+import { DAYS_OF_WEEK, MEAL_TYPES, MealPlanInput, MealPlanVisibilityInput, isDayOfWeek, isMealType } from "../models/mealPlan";
+import { RecipeInput, RecipeVisibilityInput } from "../models/recipe";
 import { UserRegistrationInput, UserUpdateInput } from "../models/user";
 
 type BodyValidator<T> = (body: unknown) => body is T;
@@ -40,7 +40,8 @@ const isRecipeInput: BodyValidator<RecipeInput> = (body): body is RecipeInput =>
   isOptionalNonNegativeNumber(body.carbs) &&
   isOptionalNonNegativeNumber(body.fat) &&
   (body.description === undefined || isNonEmptyString(body.description)) &&
-  (body.isPublic === undefined || typeof body.isPublic === "boolean");
+  (body.isPublic === undefined || typeof body.isPublic === "boolean") &&
+  (body.isSystem === undefined || typeof body.isSystem === "boolean");
 
 const isMealPlanInput: BodyValidator<MealPlanInput> = (body): body is MealPlanInput =>
   isRecord(body) &&
@@ -48,6 +49,12 @@ const isMealPlanInput: BodyValidator<MealPlanInput> = (body): body is MealPlanIn
   isPositiveInteger(body.recipeId) &&
   isDayOfWeek(body.dayOfWeek) &&
   isMealType(body.mealType);
+
+const isMealPlanVisibilityInput: BodyValidator<MealPlanVisibilityInput> = (body): body is MealPlanVisibilityInput =>
+  isRecord(body) && typeof body.isPublic === "boolean";
+
+const isRecipeVisibilityInput: BodyValidator<RecipeVisibilityInput> = (body): body is RecipeVisibilityInput =>
+  isRecord(body) && typeof body.isPublic === "boolean";
 
 const isUserRegistrationInput: BodyValidator<UserRegistrationInput> = (body): body is UserRegistrationInput =>
   isRecord(body) &&
@@ -83,3 +90,5 @@ export const validateMealPlan = validate(
 );
 export const validateUserRegistration = validate(isUserRegistrationInput, "Username, email, and password are required.");
 export const validateUserUpdate = validate(isUserUpdateInput, "At least one valid user field is required.");
+export const validateMealPlanVisibility = validate(isMealPlanVisibilityInput, "isPublic must be true or false.");
+export const validateRecipeVisibility = validate(isRecipeVisibilityInput, "isPublic must be true or false.");

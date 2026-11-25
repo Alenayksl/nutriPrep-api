@@ -15,12 +15,22 @@ const parseId = (id: string): number => {
 const recipeInclude = {
   category: true,
   author: {
-    select: { id: true, email: true, name: true, role: true },
+    select: { id: true, name: true },
   },
+  _count: { select: { mealPlans: true } },
 } satisfies Prisma.RecipeInclude;
+
+type RecipeWithRelations = Prisma.RecipeGetPayload<{ include: typeof recipeInclude }>;
+
+const toRecipeResponse = ({ _count, author, ...recipe }: RecipeWithRelations) => ({
+  ...recipe,
+  author: { id: author.id, username: author.name },
+  savedCount: _count.mealPlans,
+});
 
 const buildWhere = (filters: RecipeFilters): Prisma.RecipeWhereInput => ({
   ...(filters.categoryId !== undefined && { categoryId: filters.categoryId }),
+  ...(filters.system !== undefined && { isSystem: filters.system }),
   ...(filters.minCalories !== undefined || filters.maxCalories !== undefined
     ? { calories: { gte: filters.minCalories, lte: filters.maxCalories } }
     : {}),
@@ -35,7 +45,6 @@ const buildWhere = (filters: RecipeFilters): Prisma.RecipeWhereInput => ({
     : {}),
 });
 
-// Anonymous callers see public recipes; members also see their own private ones; ADMIN sees all.
 const visibleTo = (actor?: Actor): Prisma.RecipeWhereInput => {
   if (!actor) return { isPublic: true };
   if (isAdmin(actor)) return {};
@@ -45,7 +54,6 @@ const visibleTo = (actor?: Actor): Prisma.RecipeWhereInput => {
 export const isRecipeVisibleTo = (recipe: { isPublic: boolean; authorId: number }, actor?: Actor): boolean =>
   recipe.isPublic || (actor !== undefined && canAccessOwnedBy(actor, recipe.authorId));
 
-// Members always author as themselves; only an ADMIN may attribute a recipe to someone else.
 const resolveAuthorId = (input: RecipeInput, actor: Actor, fallbackAuthorId = actor.id): number => {
   const authorId = input.authorId ?? fallbackAuthorId;
   if (authorId !== actor.id && !isAdmin(actor)) {
@@ -64,7 +72,18 @@ const assertReferencesExist = async (input: RecipeInput, authorId: number): Prom
   if (!author) throw new AppError(400, `Author (user) ${authorId} does not exist.`);
 };
 
-const toCreateData = (input: RecipeInput, authorId: number): Prisma.RecipeCreateInput => ({
+const resolveVisibility = (input: RecipeInput, actor: Actor, currentIsSystem = false) => {
+  const isSystem = input.isSystem ?? currentIsSystem;
+  if (isSystem !== currentIsSystem && !isAdmin(actor)) {
+    throw new AppError(403, "Only an ADMIN can mark or unmark system recipes.");
+  }
+  if (isSystem && input.isPublic === false) throw new AppError(400, "System recipes must be public.");
+  return { isSystem, isPublic: isSystem || (input.isPublic ?? true) };
+};
+
+type Visibility = ReturnType<typeof resolveVisibility>;
+
+const toCreateData = (input: RecipeInput, authorId: number, visibility: Visibility): Prisma.RecipeCreateInput => ({
   title: input.title.trim(),
   description: input.description?.trim(),
   ingredients: input.ingredients,
@@ -73,29 +92,36 @@ const toCreateData = (input: RecipeInput, authorId: number): Prisma.RecipeCreate
   protein: input.protein,
   carbs: input.carbs,
   fat: input.fat,
-  isPublic: input.isPublic ?? true,
+  isPublic: visibility.isPublic,
+  isSystem: visibility.isSystem,
   category: { connect: { id: input.categoryId } },
   author: { connect: { id: authorId } },
 });
 
 export class RecipeService {
-  async getRecipes(filters: RecipeFilters, actor?: Actor) {
-    const where: Prisma.RecipeWhereInput = { AND: [buildWhere(filters), visibleTo(actor)] };
+  async getRecipes(filters: RecipeFilters, actor?: Actor, publicOnly = false) {
+    const visibility = publicOnly ? visibleTo(undefined) : visibleTo(actor);
+    const where: Prisma.RecipeWhereInput = { AND: [buildWhere(filters), visibility] };
     const skip = (filters.page - 1) * filters.limit;
+
+    const orderBy: Prisma.RecipeOrderByWithRelationInput[] =
+      filters.sort === "popular"
+        ? [{ mealPlans: { _count: "desc" } }, { createdAt: "desc" }]
+        : [{ createdAt: "desc" }];
 
     const [data, total] = await prisma.$transaction([
       prisma.recipe.findMany({
         where,
         skip,
         take: filters.limit,
-        orderBy: { createdAt: "desc" },
+        orderBy,
         include: recipeInclude,
       }),
       prisma.recipe.count({ where }),
     ]);
 
     return {
-      data,
+      data: data.map(toRecipeResponse),
       meta: {
         page: filters.page,
         limit: filters.limit,
@@ -105,7 +131,6 @@ export class RecipeService {
     };
   }
 
-  // Private recipes of other users answer 404, so their existence is not revealed.
   async getRecipe(id: string, actor?: Actor) {
     const recipe = await prisma.recipe.findUnique({
       where: { id: parseId(id) },
@@ -113,14 +138,13 @@ export class RecipeService {
     });
 
     if (!recipe || !isRecipeVisibleTo(recipe, actor)) throw new AppError(404, "Recipe not found.");
-    return recipe;
+    return toRecipeResponse(recipe);
   }
 
-  // Loads a recipe for a write, allowing only its author or an ADMIN.
   private async getOwnedRecipe(recipeId: number, actor: Actor) {
     const recipe = await prisma.recipe.findUnique({
       where: { id: recipeId },
-      select: { id: true, authorId: true, isPublic: true },
+      select: { id: true, authorId: true, isPublic: true, isSystem: true },
     });
     if (!recipe || !isRecipeVisibleTo(recipe, actor)) throw new AppError(404, "Recipe not found.");
     assertCanAccessOwnedBy(actor, recipe.authorId, "You can only modify recipes you authored.");
@@ -129,12 +153,14 @@ export class RecipeService {
 
   async createRecipe(input: RecipeInput, actor: Actor) {
     const authorId = resolveAuthorId(input, actor);
+    const visibility = resolveVisibility(input, actor);
     await assertReferencesExist(input, authorId);
     try {
-      return await prisma.recipe.create({
-        data: toCreateData(input, authorId),
+      const recipe = await prisma.recipe.create({
+        data: toCreateData(input, authorId, visibility),
         include: recipeInclude,
       });
+      return toRecipeResponse(recipe);
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2003") {
         throw new AppError(400, "The selected category or author does not exist.");
@@ -145,15 +171,16 @@ export class RecipeService {
 
   async updateRecipe(id: string, input: RecipeInput, actor: Actor) {
     const existing = await this.getOwnedRecipe(parseId(id), actor);
-    // Omitting authorId keeps the current author (so an ADMIN edit does not take over the recipe).
     const authorId = resolveAuthorId(input, actor, existing.authorId);
+    const visibility = resolveVisibility(input, actor, existing.isSystem);
     await assertReferencesExist(input, authorId);
     try {
-      return await prisma.recipe.update({
+      const recipe = await prisma.recipe.update({
         where: { id: existing.id },
-        data: toCreateData(input, authorId),
+        data: toCreateData(input, authorId, visibility),
         include: recipeInclude,
       });
+      return toRecipeResponse(recipe);
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
         throw new AppError(404, "Recipe not found.");
@@ -163,6 +190,18 @@ export class RecipeService {
       }
       throw error;
     }
+  }
+
+  async setRecipeVisibility(id: string, isPublic: boolean, actor: Actor) {
+    const existing = await this.getOwnedRecipe(parseId(id), actor);
+    if (existing.isSystem && !isPublic) throw new AppError(400, "System recipes must be public.");
+
+    const recipe = await prisma.recipe.update({
+      where: { id: existing.id },
+      data: { isPublic },
+      include: recipeInclude,
+    });
+    return toRecipeResponse(recipe);
   }
 
   async deleteRecipe(id: string, actor: Actor): Promise<void> {

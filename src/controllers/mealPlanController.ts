@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import { AppError } from "../errors/AppError";
 import { requireActor } from "../middleware/authorization";
-import { DAYS_OF_WEEK, MEAL_TYPES, MealPlanFilters, MealPlanInput, isDayOfWeek, isMealType } from "../models/mealPlan";
+import { DAYS_OF_WEEK, MEAL_TYPES, MealPlanFilters, MealPlanInput, MealPlanVisibilityInput, isDayOfWeek, isMealType } from "../models/mealPlan";
 import { mealPlanService } from "../services/mealPlanService";
 
 const queryValue = (value: unknown): string | undefined => {
@@ -73,4 +73,21 @@ export const updateMealPlan = async (req: Request<{ id: string }, unknown, MealP
 export const deleteMealPlan = async (req: Request<{ id: string }>, res: Response) => {
   await mealPlanService.deleteMealPlan(req.params.id, requireActor(req.user));
   res.status(204).send();
+};
+
+export const setMealPlanVisibility = async (
+  req: Request<{ id: string }, unknown, MealPlanVisibilityInput>,
+  res: Response,
+) => {
+  const result = await mealPlanService.setPlanVisibility(req.params.id, req.body.isPublic);
+  res.status(200).json({ success: true, data: result });
+};
+
+export const getPublicMealPlans = async (req: Request, res: Response) => {
+  const { page, limit } = parseFilters(req.query);
+  res.status(200).json({ success: true, ...(await mealPlanService.getPublicPlans(page, limit)) });
+};
+
+export const getPublicMealPlan = async (req: Request<{ userId: string }>, res: Response) => {
+  res.status(200).json({ success: true, data: await mealPlanService.getPublicPlan(req.params.userId) });
 };

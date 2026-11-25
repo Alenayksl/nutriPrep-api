@@ -44,11 +44,18 @@ Authorization has three layers:
 
 `authenticateToken` puts the verified claims on `req.auth` (`scopes`, `clientId`, `user`) and the user, if any, on `req.user`.
 
+### Sharing
+
+- Recipes have `isPublic` (default `true`) and `isSystem` (`ADMIN`-only default recipes, always public).
+- Weekly meal plans are shared per user with `User.mealPlanSharedAt` (`null` = private). Public plan views only include slots whose recipe is public, and they never include emails.
+- Popularity is the count of `MealPlan` rows per recipe (`savedCount`, `sort=popular`, `/recipes/popular`). No extra table is needed.
+- `Recipe.author` cascades on delete, so deleting a user removes their recipes and, through `MealPlan.recipe`, the slots that used them.
+
 Policy:
 
 - `GUEST`: read categories and their recipes (`categories:read`, `recipes:read`) plus their own profile. Anonymous requests can still read public data.
 - `MEMBER`: recipe and meal-plan operations on the member's own data.
-- `ADMIN`: category management and any operation on any user's data.
+- `ADMIN`: category management, system recipes, and any operation on any user's data (including deleting users, their recipes and meal plans).
 
 ## Filtering and pagination
 
