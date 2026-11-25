@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { ErrorRequestHandler } from "express";
 import { AppError } from "../errors/AppError";
+import { OAuthError } from "../errors/OAuthError";
 
 const isJsonParseError = (error: unknown): boolean =>
   error instanceof SyntaxError && (error as { type?: string }).type === "entity.parse.failed";
@@ -27,11 +28,17 @@ const toAppError = (error: unknown): AppError | undefined => {
 };
 
 export const errorHandler: ErrorRequestHandler = (error, req, res, _next) => {
+  if (error instanceof OAuthError) {
+    if (error.code === "invalid_client") res.set("WWW-Authenticate", 'Basic realm="nutriprep"');
+    res.set("Cache-Control", "no-store").status(error.statusCode).json({ error: error.code, error_description: error.message });
+    return;
+  }
+
   const appError = toAppError(error);
   if (!appError) {
     console.error(`Unexpected error on ${req.method} ${req.originalUrl}:`, error);
   }
 
-  const { statusCode, message } = appError ?? new AppError(500, "An unexpected server error occurred.");
-  res.status(statusCode).json({ success: false, message });
+  const { statusCode, message, headers } = appError ?? new AppError(500, "An unexpected server error occurred.");
+  res.set(headers).status(statusCode).json({ success: false, message });
 };

@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { AppError } from "../errors/AppError";
-import { DAYS_OF_WEEK, MEAL_TYPES, MealPlanFilters, MealPlanInput, isDayOfWeek, isMealType } from "../models/mealPlan";
+import { requireActor } from "../middleware/authorization";
+import { DAYS_OF_WEEK, MEAL_TYPES, MealPlanFilters, MealPlanInput, MealPlanVisibilityInput, isDayOfWeek, isMealType } from "../models/mealPlan";
 import { mealPlanService } from "../services/mealPlanService";
 
 const queryValue = (value: unknown): string | undefined => {
@@ -47,7 +48,7 @@ const parseQueryOption = <T extends string>(
 };
 
 export const getAllMealPlans = async (req: Request, res: Response) => {
-  const result = await mealPlanService.getMealPlans(parseFilters(req.query));
+  const result = await mealPlanService.getMealPlans(parseFilters(req.query), requireActor(req.user));
   res.status(200).json({ success: true, ...result });
 };
 
@@ -56,20 +57,37 @@ export const getWeeklyMealPlan = async (req: Request<{ id: string }>, res: Respo
 };
 
 export const getMealById = async (req: Request<{ id: string }>, res: Response) => {
-  res.status(200).json({ success: true, data: await mealPlanService.getMealPlan(req.params.id) });
+  res.status(200).json({ success: true, data: await mealPlanService.getMealPlan(req.params.id, requireActor(req.user)) });
 };
 
 export const createNewMealPlan = async (req: Request<Record<string, never>, unknown, MealPlanInput>, res: Response) => {
-  const mealPlan = await mealPlanService.createMealPlan(req.body);
+  const mealPlan = await mealPlanService.createMealPlan(req.body, requireActor(req.user));
   res.status(201).json({ success: true, data: mealPlan });
 };
 
 export const updateMealPlan = async (req: Request<{ id: string }, unknown, MealPlanInput>, res: Response) => {
-  const mealPlan = await mealPlanService.updateMealPlan(req.params.id, req.body);
+  const mealPlan = await mealPlanService.updateMealPlan(req.params.id, req.body, requireActor(req.user));
   res.status(200).json({ success: true, data: mealPlan });
 };
 
 export const deleteMealPlan = async (req: Request<{ id: string }>, res: Response) => {
-  await mealPlanService.deleteMealPlan(req.params.id);
+  await mealPlanService.deleteMealPlan(req.params.id, requireActor(req.user));
   res.status(204).send();
+};
+
+export const setMealPlanVisibility = async (
+  req: Request<{ id: string }, unknown, MealPlanVisibilityInput>,
+  res: Response,
+) => {
+  const result = await mealPlanService.setPlanVisibility(req.params.id, req.body.isPublic);
+  res.status(200).json({ success: true, data: result });
+};
+
+export const getPublicMealPlans = async (req: Request, res: Response) => {
+  const { page, limit } = parseFilters(req.query);
+  res.status(200).json({ success: true, ...(await mealPlanService.getPublicPlans(page, limit)) });
+};
+
+export const getPublicMealPlan = async (req: Request<{ userId: string }>, res: Response) => {
+  res.status(200).json({ success: true, data: await mealPlanService.getPublicPlan(req.params.userId) });
 };

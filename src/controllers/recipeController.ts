@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { AppError } from "../errors/AppError";
-import { NutritionFilters, RECIPE_PRESETS, RecipeFilters, RecipeInput, RecipePreset } from "../models/recipe";
+import { requireActor } from "../middleware/authorization";
+import { NutritionFilters, RECIPE_PRESETS, RECIPE_SORTS, RecipeFilters, RecipeInput, RecipePreset, RecipeSort, RecipeVisibilityInput } from "../models/recipe";
 import { categoryService } from "../services/categoryService";
 import { recipeService } from "../services/recipeService";
 
@@ -19,6 +20,23 @@ const parseQueryNumber = (value: unknown, name: string): number | undefined => {
         throw new AppError(400, `${name} must be a non-negative number.`);
     }
     return parsedValue;
+};
+
+const parseQueryBoolean = (value: unknown, name: string): boolean | undefined => {
+    const rawValue = queryValue(value);
+    if (rawValue === undefined) return undefined;
+    if (rawValue === "true") return true;
+    if (rawValue === "false") return false;
+    throw new AppError(400, `${name} must be true or false.`);
+};
+
+const parseSort = (value: unknown): RecipeSort => {
+    const rawValue = queryValue(value);
+    if (rawValue === undefined) return "newest";
+    if (!(RECIPE_SORTS as readonly string[]).includes(rawValue)) {
+        throw new AppError(400, `sort must be one of ${RECIPE_SORTS.join(", ")}.`);
+    }
+    return rawValue as RecipeSort;
 };
 
 const isRecipePreset = (value: string): value is RecipePreset => Object.hasOwn(RECIPE_PRESETS, value);
@@ -63,7 +81,9 @@ const parseFilters = (query: Request["query"]): RecipeFilters => {
     return applyPresets({
         page,
         limit,
+        sort: parseSort(query.sort),
         categoryId: parseQueryNumber(query.categoryId, "categoryId"),
+        system: parseQueryBoolean(query.system, "system"),
         minCalories: parseQueryNumber(query.minCalories, "minCalories"),
         maxCalories: parseQueryNumber(query.maxCalories, "maxCalories"),
         minProtein: parseQueryNumber(query.minProtein, "minProtein"),
@@ -81,31 +101,42 @@ export const getRecipePresets = (_req: Request, res: Response) => {
 };
 
 export const getAllRecipes = async (req: Request, res: Response) => {
-    const result = await recipeService.getRecipes(parseFilters(req.query));
+    const result = await recipeService.getRecipes(parseFilters(req.query), req.user);
     res.status(200).json({ success: true, ...result });
+};
+
+export const getPopularRecipes = async (req: Request, res: Response) => {
+    const filters: RecipeFilters = { ...parseFilters(req.query), sort: "popular" };
+    const result = await recipeService.getRecipes(filters, req.user, true);
+    res.status(200).json({ success: true, ...result });
+};
+
+export const setRecipeVisibility = async (req: Request<{ id: string }, unknown, RecipeVisibilityInput>, res: Response) => {
+    const recipe = await recipeService.setRecipeVisibility(req.params.id, req.body.isPublic, requireActor(req.user));
+    res.status(200).json({ success: true, data: recipe });
 };
 
 export const getRecipesByCategory = async (req: Request<{ id: string }>, res: Response) => {
     const category = await categoryService.getCategory(req.params.id);
-    const result = await recipeService.getRecipes({ ...parseFilters(req.query), categoryId: category.id });
+    const result = await recipeService.getRecipes({ ...parseFilters(req.query), categoryId: category.id }, req.user);
     res.status(200).json({ success: true, ...result });
 };
 
 export const getRecipeById = async (req: Request<{ id: string }>, res: Response) => {
-    res.status(200).json({ success: true, data: await recipeService.getRecipe(req.params.id) });
+    res.status(200).json({ success: true, data: await recipeService.getRecipe(req.params.id, req.user) });
 };
 
 export const createRecipe = async (req: Request<Record<string, never>, unknown, RecipeInput>, res: Response) => {
-    const recipe = await recipeService.createRecipe(req.body);
+    const recipe = await recipeService.createRecipe(req.body, requireActor(req.user));
     res.status(201).json({ success: true, data: recipe });
 };
 
 export const updateRecipe = async (req: Request<{ id: string }, unknown, RecipeInput>, res: Response) => {
-    const recipe = await recipeService.updateRecipe(req.params.id, req.body);
+    const recipe = await recipeService.updateRecipe(req.params.id, req.body, requireActor(req.user));
     res.status(200).json({ success: true, data: recipe });
 };
 
 export const deleteRecipe = async (req: Request<{ id: string }>, res: Response) => {
-    await recipeService.deleteRecipe(req.params.id);
+    await recipeService.deleteRecipe(req.params.id, requireActor(req.user));
     res.status(204).send();
 };

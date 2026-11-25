@@ -8,14 +8,24 @@ export interface RecipeInput {
   carbs?: number;
   fat?: number;
   isPublic?: boolean;
+  isSystem?: boolean;
   categoryId: number;
-  authorId: number;
+  authorId?: number;
 }
+
+export interface RecipeVisibilityInput {
+  isPublic: boolean;
+}
+
+export const RECIPE_SORTS = ["newest", "popular"] as const;
+export type RecipeSort = (typeof RECIPE_SORTS)[number];
 
 export interface RecipeFilters {
   page: number;
   limit: number;
+  sort: RecipeSort;
   categoryId?: number;
+  system?: boolean;
   minCalories?: number;
   maxCalories?: number;
   minProtein?: number;
@@ -26,7 +36,7 @@ export interface RecipeFilters {
   maxFat?: number;
 }
 
-export type NutritionFilters = Omit<RecipeFilters, "page" | "limit" | "categoryId">;
+export type NutritionFilters = Omit<RecipeFilters, "page" | "limit" | "sort" | "categoryId" | "system">;
 
 // Named nutrition filters; computed from stored macros, so they never go out of sync.
 export const RECIPE_PRESETS = {
@@ -37,4 +47,3 @@ export const RECIPE_PRESETS = {
 } satisfies Record<string, { description: string; filters: NutritionFilters }>;
 
 export type RecipePreset = keyof typeof RECIPE_PRESETS;
-

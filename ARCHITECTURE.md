@@ -9,25 +9,53 @@ The API is organized around the request flow:
 - `src/routes/`: maps HTTP methods and resource paths to controllers.
 - `src/controllers/`: translates HTTP requests into service calls and formats JSON responses.
 - `src/services/`: owns business rules, filtering, pagination, and Prisma queries.
-- `src/middleware/`: shared concerns such as validation, error handling, JWT authentication, role authorization, and pagination parsing. Category creation is protected by `requireRole(Role.ADMIN)`.
-- `src/utils/jwt.ts`: signs and verifies JWTs using the authenticated user's ID and Prisma role.
-- `src/services/authService.ts`: verifies bcrypt passwords and creates login tokens.
+- `src/middleware/`: shared concerns such as validation, error handling, access-token authentication, scope and ownership authorization, and pagination parsing.
+- `src/utils/jwt.ts`: signs and verifies access tokens (subject, role, scopes, client id).
+- `src/services/oauthService.ts`: the OAuth2 authorization server. It handles client authentication, the password / refresh_token / client_credentials grants, refresh token rotation and revocation.
+- `src/services/authService.ts`: the legacy `POST /api/auth/login` and `GET /api/auth/me`.
+- `src/models/oauth.ts`: scopes, the role-to-scope map (`ROLE_SCOPES`) and the token request/response types.
 - `src/utils/prisma.ts`: owns the singleton `PrismaClient` instance used by database-backed services.
 - `src/models/`: request and domain input types. All four core entity services now use Prisma persistence.
 - `src/services/userService.ts`: manages User CRUD with bcrypt password hashing and public response sanitization; passwords are never returned.
-- `prisma/`: PostgreSQL schema and migrations for `User`, `Recipe`, `Category`, and `MealPlan`.
+- `prisma/`: PostgreSQL schema and migrations for `User`, `Recipe`, `Category`, `MealPlan`, `OAuthClient`, and `RefreshToken`.
 
-## Roles
+## Roles and OAuth2
 
-The Prisma `Role` enum is the source of truth: `GUEST`, `MEMBER`, and `ADMIN`. `authenticateToken` verifies `Authorization: Bearer <token>` and attaches the verified user to `req.user`; `requireRole(...roles)` then protects routes such as category creation.
+The Prisma `Role` enum is the source of truth: `GUEST`, `MEMBER`, and `ADMIN`.
 
-Authentication is exposed through `POST /api/auth/login`. JWT configuration is provided by `JWT_SECRET` and `JWT_EXPIRES_IN` environment variables.
+The API acts as both the OAuth2 **authorization server** (`POST /api/oauth/token`, `POST /api/oauth/revoke`) and the **resource server**.
 
-Suggested policy:
+- Clients are rows in `OAuthClient`. Each row lists its allowed grant types and the most scopes it may receive. A confidential client stores a bcrypt-hashed secret; a public client has no secret.
+- Refresh tokens are rows in `RefreshToken`, holding only a SHA-256 hash. They are rotated on every use. Reusing an old one revokes that user's tokens for that client.
+- Access tokens are HS256 JWTs carrying `sub` (user id, or `client:<clientId>` for machine tokens), `role`, `scope` and `client_id`. Verification pins the algorithm. `JWT_SECRET` must be at least 32 characters.
 
-- `GUEST`: public read-only resources.
-- `MEMBER`: authenticated recipe and meal-plan operations for the current user.
-- `ADMIN`: user, category, and moderation operations.
+### Role-based authorization
+
+Authorization has three layers:
+
+1. **Role → scopes** (`ROLE_SCOPES` in `src/models/oauth.ts`): a token gets at most the scopes of its user's role, further limited by the client and by what was requested. Scopes are re-derived from the current role on every refresh.
+2. **Scope per route** (`requireScope(...)`): each protected route lists the scopes it needs. A missing scope gives `403` with `WWW-Authenticate: Bearer error="insufficient_scope"`. Public category and recipe reads use `requireScopeIfAuthenticated(...)`: anonymous requests pass, while a request with a token needs `categories:read` / `recipes:read`.
+3. **Ownership** (`Actor`, `canAccessOwnedBy`, `assertCanAccessOwnedBy` in `src/middleware/authorization.ts`): `ADMIN` passes every ownership check.
+   - `/users/:id` routes use `requireSelfOrAdmin`.
+   - Recipe and meal-plan services take the caller (`Actor`) and check the stored `authorId` / `userId` before updates and deletes.
+   - `authorId` / `userId` in request bodies default to the caller, and members cannot point them at another user.
+   - Public recipe reads use `optionalAuthentication`, so a caller can see their own `isPublic: false` recipes and others cannot.
+   - `client_credentials` tokens have no user (`req.user` is unset), so user-owned routes answer them with `403`.
+
+`authenticateToken` puts the verified claims on `req.auth` (`scopes`, `clientId`, `user`) and the user, if any, on `req.user`.
+
+### Sharing
+
+- Recipes have `isPublic` (default `true`) and `isSystem` (`ADMIN`-only default recipes, always public).
+- Weekly meal plans are shared per user with `User.mealPlanSharedAt` (`null` = private). Public plan views only include slots whose recipe is public, and they never include emails.
+- Popularity is the count of `MealPlan` rows per recipe (`savedCount`, `sort=popular`, `/recipes/popular`). No extra table is needed.
+- `Recipe.author` cascades on delete, so deleting a user removes their recipes and, through `MealPlan.recipe`, the slots that used them.
+
+Policy:
+
+- `GUEST`: read categories and their recipes (`categories:read`, `recipes:read`) plus their own profile. Anonymous requests can still read public data.
+- `MEMBER`: recipe and meal-plan operations on the member's own data.
+- `ADMIN`: category management, system recipes, and any operation on any user's data (including deleting users, their recipes and meal plans).
 
 ## Filtering and pagination
 

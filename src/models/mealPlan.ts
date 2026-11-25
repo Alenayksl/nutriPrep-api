@@ -12,10 +12,14 @@ export const isMealType = (value: unknown): value is MealType =>
   typeof value === "string" && (MEAL_TYPES as readonly string[]).includes(value);
 
 export interface MealPlanInput {
-  userId: number;
+  userId?: number;
   recipeId: number;
   dayOfWeek: string;
   mealType: string;
+}
+
+export interface MealPlanVisibilityInput {
+  isPublic: boolean;
 }
 
 export interface MealPlanFilters {

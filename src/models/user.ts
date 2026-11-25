@@ -17,6 +17,7 @@ export interface PublicUser {
   username: string | null;
   email: string;
   role: Role;
+  isMealPlanPublic: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
