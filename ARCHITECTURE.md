@@ -21,13 +21,22 @@ The API is organized around the request flow:
 
 The Prisma `Role` enum is the source of truth: `GUEST`, `MEMBER`, and `ADMIN`. `authenticateToken` verifies `Authorization: Bearer <token>` and attaches the verified user to `req.user`; `requireRole(...roles)` then protects routes such as category creation.
 
-Authentication is exposed through `POST /api/auth/login`. JWT configuration is provided by `JWT_SECRET` and `JWT_EXPIRES_IN` environment variables.
+Authentication is exposed through `POST /api/auth/login` and `GET /api/auth/me`. JWT configuration is provided by `JWT_SECRET` (at least 32 characters) and `JWT_EXPIRES_IN` environment variables. Tokens are HS256, and verification pins the algorithm.
 
-Suggested policy:
+Authorization has two layers:
 
-- `GUEST`: public read-only resources.
-- `MEMBER`: authenticated recipe and meal-plan operations for the current user.
-- `ADMIN`: user, category, and moderation operations.
+1. **Role**: `requireRole(...roles)` on routes, for example `ADMIN` for category writes and `MEMBER` for recipe writes.
+2. **Ownership**: checked with the helpers in `src/middleware/authorization.ts` (`Actor`, `canAccessOwnedBy`, `assertCanAccessOwnedBy`). `ADMIN` passes every ownership check.
+   - `/users/:id` routes use the `requireSelfOrAdmin` middleware.
+   - Recipe and meal-plan services take the caller (`Actor`) and check the stored `authorId` / `userId` before updates and deletes.
+   - `authorId` / `userId` in the request body default to the caller, and members cannot point them at another user.
+   - Public recipe reads use `optionalAuthentication`, so a caller can see their own `isPublic: false` recipes and other users cannot.
+
+Policy:
+
+- `GUEST`: public read-only resources (anonymous requests are treated the same way).
+- `MEMBER`: recipe and meal-plan operations on the member's own data.
+- `ADMIN`: category management and any operation on any user's data.
 
 ## Filtering and pagination
 

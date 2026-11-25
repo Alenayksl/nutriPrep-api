@@ -12,7 +12,8 @@ export const isMealType = (value: unknown): value is MealType =>
   typeof value === "string" && (MEAL_TYPES as readonly string[]).includes(value);
 
 export interface MealPlanInput {
-  userId: number;
+  // Defaults to the caller; only an ADMIN may set it to another user.
+  userId?: number;
   recipeId: number;
   dayOfWeek: string;
   mealType: string;

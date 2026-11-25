@@ -9,7 +9,8 @@ export interface RecipeInput {
   fat?: number;
   isPublic?: boolean;
   categoryId: number;
-  authorId: number;
+  // Defaults to the caller; only an ADMIN may set it to another user.
+  authorId?: number;
 }
 
 export interface RecipeFilters {

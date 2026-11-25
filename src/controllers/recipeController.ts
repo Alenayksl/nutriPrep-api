@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { AppError } from "../errors/AppError";
+import { requireActor } from "../middleware/authorization";
 import { NutritionFilters, RECIPE_PRESETS, RecipeFilters, RecipeInput, RecipePreset } from "../models/recipe";
 import { categoryService } from "../services/categoryService";
 import { recipeService } from "../services/recipeService";
@@ -81,31 +82,31 @@ export const getRecipePresets = (_req: Request, res: Response) => {
 };
 
 export const getAllRecipes = async (req: Request, res: Response) => {
-    const result = await recipeService.getRecipes(parseFilters(req.query));
+    const result = await recipeService.getRecipes(parseFilters(req.query), req.user);
     res.status(200).json({ success: true, ...result });
 };
 
 export const getRecipesByCategory = async (req: Request<{ id: string }>, res: Response) => {
     const category = await categoryService.getCategory(req.params.id);
-    const result = await recipeService.getRecipes({ ...parseFilters(req.query), categoryId: category.id });
+    const result = await recipeService.getRecipes({ ...parseFilters(req.query), categoryId: category.id }, req.user);
     res.status(200).json({ success: true, ...result });
 };
 
 export const getRecipeById = async (req: Request<{ id: string }>, res: Response) => {
-    res.status(200).json({ success: true, data: await recipeService.getRecipe(req.params.id) });
+    res.status(200).json({ success: true, data: await recipeService.getRecipe(req.params.id, req.user) });
 };
 
 export const createRecipe = async (req: Request<Record<string, never>, unknown, RecipeInput>, res: Response) => {
-    const recipe = await recipeService.createRecipe(req.body);
+    const recipe = await recipeService.createRecipe(req.body, requireActor(req.user));
     res.status(201).json({ success: true, data: recipe });
 };
 
 export const updateRecipe = async (req: Request<{ id: string }, unknown, RecipeInput>, res: Response) => {
-    const recipe = await recipeService.updateRecipe(req.params.id, req.body);
+    const recipe = await recipeService.updateRecipe(req.params.id, req.body, requireActor(req.user));
     res.status(200).json({ success: true, data: recipe });
 };
 
 export const deleteRecipe = async (req: Request<{ id: string }>, res: Response) => {
-    await recipeService.deleteRecipe(req.params.id);
+    await recipeService.deleteRecipe(req.params.id, requireActor(req.user));
     res.status(204).send();
 };

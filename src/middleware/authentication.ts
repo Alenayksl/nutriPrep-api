@@ -1,11 +1,11 @@
-import { RequestHandler } from "express";
+import { NextFunction, Request, RequestHandler } from "express";
 import { JsonWebTokenError, TokenExpiredError } from "jsonwebtoken";
 import { AppError } from "../errors/AppError";
 import { verifyToken } from "../utils/jwt";
 
-export const authenticateToken: RequestHandler = (req, _res, next) => {
-  const authorization = req.header("Authorization");
-  const [scheme, token] = authorization?.split(" ") ?? [];
+// Verifies the Bearer token and attaches the caller to req.user.
+const attachUser = (req: Request, next: NextFunction, authorization: string): void => {
+  const [scheme, token] = authorization.split(" ");
 
   if (scheme !== "Bearer" || !token) {
     next(new AppError(401, "A Bearer authentication token is required."));
@@ -23,4 +23,19 @@ export const authenticateToken: RequestHandler = (req, _res, next) => {
     }
     next(error);
   }
+};
+
+export const authenticateToken: RequestHandler = (req, _res, next) => {
+  attachUser(req, next, req.header("Authorization") ?? "");
+};
+
+// For public routes whose response depends on who is asking (e.g. private recipes):
+// no header means an anonymous request, but a header that is present must be valid.
+export const optionalAuthentication: RequestHandler = (req, _res, next) => {
+  const authorization = req.header("Authorization");
+  if (!authorization) {
+    next();
+    return;
+  }
+  attachUser(req, next, authorization);
 };

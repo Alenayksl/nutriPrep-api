@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { AppError } from "../errors/AppError";
 import { DAYS_OF_WEEK, DayOfWeek, MEAL_TYPES, MealPlanFilters, MealPlanInput, MacroStatistics, MealType } from "../models/mealPlan";
+import { Actor, assertCanAccessOwnedBy, isAdmin } from "../middleware/authorization";
 import { prisma } from "../utils/prisma";
 
 const parseId = (id: string, resource: string): number => {
@@ -49,23 +50,41 @@ const compareSlots = (
   DAYS_OF_WEEK.indexOf(a.dayOfWeek as DayOfWeek) - DAYS_OF_WEEK.indexOf(b.dayOfWeek as DayOfWeek) ||
   MEAL_TYPES.indexOf(a.mealType as MealType) - MEAL_TYPES.indexOf(b.mealType as MealType);
 
-const toSlotConflict = (error: unknown, input: MealPlanInput): unknown =>
+const toSlotConflict = (error: unknown, input: MealPlanInput, userId: number): unknown =>
   error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002"
-    ? new AppError(409, `User ${input.userId} already has ${input.mealType} planned for ${input.dayOfWeek}. Update that entry instead.`)
+    ? new AppError(409, `User ${userId} already has ${input.mealType} planned for ${input.dayOfWeek}. Update that entry instead.`)
     : error;
 
+const OWN_PLANS_ONLY = "You can only access your own meal plans.";
+
+// Members always plan for themselves; only an ADMIN may manage another user's plan.
+const resolveUserId = (input: MealPlanInput, actor: Actor, fallbackUserId = actor.id): number => {
+  const userId = input.userId ?? fallbackUserId;
+  assertCanAccessOwnedBy(actor, userId, OWN_PLANS_ONLY);
+  return userId;
+};
+
 // Prisma reports a missing connect target as P2025, which looks like "meal plan not found", so check up front.
-const assertReferencesExist = async (input: MealPlanInput): Promise<void> => {
+// A private recipe can only be planned by its own author, so it is reported as missing to everyone else.
+const assertReferencesExist = async (userId: number, recipeId: number): Promise<void> => {
   const [user, recipe] = await Promise.all([
-    prisma.user.findUnique({ where: { id: input.userId }, select: { id: true } }),
-    prisma.recipe.findUnique({ where: { id: input.recipeId }, select: { id: true } }),
+    prisma.user.findUnique({ where: { id: userId }, select: { id: true } }),
+    prisma.recipe.findUnique({ where: { id: recipeId }, select: { id: true, isPublic: true, authorId: true } }),
   ]);
-  if (!user) throw new AppError(400, `User ${input.userId} does not exist.`);
-  if (!recipe) throw new AppError(400, `Recipe ${input.recipeId} does not exist.`);
+  if (!user) throw new AppError(400, `User ${userId} does not exist.`);
+  if (!recipe || (!recipe.isPublic && recipe.authorId !== userId)) {
+    throw new AppError(400, `Recipe ${recipeId} does not exist.`);
+  }
 };
 
 export class MealPlanService {
-  async getMealPlans(filters: MealPlanFilters) {
+  // Members only ever see their own plans; an ADMIN may list everyone's or filter by userId.
+  async getMealPlans(filters: MealPlanFilters, actor: Actor) {
+    if (!isAdmin(actor)) {
+      if (filters.userId !== undefined) assertCanAccessOwnedBy(actor, filters.userId, OWN_PLANS_ONLY);
+      filters = { ...filters, userId: actor.id };
+    }
+
     // A user's plan has at most 21 slots, so sorting in memory before paginating stays cheap.
     const plans = await prisma.mealPlan.findMany({ where: buildWhere(filters), include: mealPlanInclude });
     plans.sort(compareSlots);
@@ -84,13 +103,22 @@ export class MealPlanService {
     };
   }
 
-  async getMealPlan(id: string) {
+  async getMealPlan(id: string, actor: Actor) {
     const mealPlan = await prisma.mealPlan.findUnique({
       where: { id: parseId(id, "Meal plan") },
       include: mealPlanInclude,
     });
 
     if (!mealPlan) throw new AppError(404, "Meal plan not found.");
+    assertCanAccessOwnedBy(actor, mealPlan.userId, OWN_PLANS_ONLY);
+    return mealPlan;
+  }
+
+  // Loads a meal plan for a write, allowing only its owner or an ADMIN.
+  private async getOwnedMealPlan(mealPlanId: number, actor: Actor) {
+    const mealPlan = await prisma.mealPlan.findUnique({ where: { id: mealPlanId }, select: { id: true, userId: true } });
+    if (!mealPlan) throw new AppError(404, "Meal plan not found.");
+    assertCanAccessOwnedBy(actor, mealPlan.userId, OWN_PLANS_ONLY);
     return mealPlan;
   }
 
@@ -127,12 +155,13 @@ export class MealPlanService {
     return { userId: numericUserId, days, weekTotals: totalMacroStatistics };
   }
 
-  async createMealPlan(input: MealPlanInput) {
-    await assertReferencesExist(input);
+  async createMealPlan(input: MealPlanInput, actor: Actor) {
+    const userId = resolveUserId(input, actor);
+    await assertReferencesExist(userId, input.recipeId);
     try {
       return await prisma.mealPlan.create({
         data: {
-          user: { connect: { id: input.userId } },
+          user: { connect: { id: userId } },
           recipe: { connect: { id: input.recipeId } },
           dayOfWeek: input.dayOfWeek.trim(),
           mealType: input.mealType.trim(),
@@ -143,18 +172,20 @@ export class MealPlanService {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2003") {
         throw new AppError(400, "The selected user or recipe does not exist.");
       }
-      throw toSlotConflict(error, input);
+      throw toSlotConflict(error, input, userId);
     }
   }
 
-  async updateMealPlan(id: string, input: MealPlanInput) {
-    const mealPlanId = parseId(id, "Meal plan");
-    await assertReferencesExist(input);
+  async updateMealPlan(id: string, input: MealPlanInput, actor: Actor) {
+    const existing = await this.getOwnedMealPlan(parseId(id, "Meal plan"), actor);
+    // Omitting userId keeps the plan with its current owner.
+    const userId = resolveUserId(input, actor, existing.userId);
+    await assertReferencesExist(userId, input.recipeId);
     try {
       return await prisma.mealPlan.update({
-        where: { id: mealPlanId },
+        where: { id: existing.id },
         data: {
-          user: { connect: { id: input.userId } },
+          user: { connect: { id: userId } },
           recipe: { connect: { id: input.recipeId } },
           dayOfWeek: input.dayOfWeek.trim(),
           mealType: input.mealType.trim(),
@@ -168,13 +199,14 @@ export class MealPlanService {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2003") {
         throw new AppError(400, "The selected user or recipe does not exist.");
       }
-      throw toSlotConflict(error, input);
+      throw toSlotConflict(error, input, userId);
     }
   }
 
-  async deleteMealPlan(id: string): Promise<void> {
+  async deleteMealPlan(id: string, actor: Actor): Promise<void> {
+    const existing = await this.getOwnedMealPlan(parseId(id, "Meal plan"), actor);
     try {
-      await prisma.mealPlan.delete({ where: { id: parseId(id, "Meal plan") } });
+      await prisma.mealPlan.delete({ where: { id: existing.id } });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
         throw new AppError(404, "Meal plan not found.");

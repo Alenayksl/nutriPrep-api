@@ -21,6 +21,9 @@ const isOptionalNonNegativeNumber = (value: unknown): boolean =>
 const isPositiveInteger = (value: unknown): value is number =>
   typeof value === "number" && Number.isInteger(value) && value > 0;
 
+const isOptionalPositiveInteger = (value: unknown): boolean =>
+  value === undefined || isPositiveInteger(value);
+
 const isCategoryInput: BodyValidator<CategoryInput> = (body): body is CategoryInput =>
   isRecord(body) && isNonEmptyString(body.name) &&
   (body.description === undefined || isNonEmptyString(body.description));
@@ -31,7 +34,7 @@ const isRecipeInput: BodyValidator<RecipeInput> = (body): body is RecipeInput =>
   isStringArray(body.ingredients) &&
   isNonEmptyString(body.instructions) &&
   isPositiveInteger(body.categoryId) &&
-  isPositiveInteger(body.authorId) &&
+  isOptionalPositiveInteger(body.authorId) &&
   isOptionalNonNegativeNumber(body.calories) &&
   isOptionalNonNegativeNumber(body.protein) &&
   isOptionalNonNegativeNumber(body.carbs) &&
@@ -41,7 +44,7 @@ const isRecipeInput: BodyValidator<RecipeInput> = (body): body is RecipeInput =>
 
 const isMealPlanInput: BodyValidator<MealPlanInput> = (body): body is MealPlanInput =>
   isRecord(body) &&
-  isPositiveInteger(body.userId) &&
+  isOptionalPositiveInteger(body.userId) &&
   isPositiveInteger(body.recipeId) &&
   isDayOfWeek(body.dayOfWeek) &&
   isMealType(body.mealType);

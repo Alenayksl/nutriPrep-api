@@ -97,7 +97,16 @@ Use the returned token on protected requests:
 Authorization: Bearer <token>
 ```
 
+Read the user behind the token:
+
+```http
+GET /api/auth/me
+Authorization: Bearer <token>
+```
+
 Passwords are stored as bcrypt hashes and are never returned by the API. New users receive the Prisma default `MEMBER` role.
+
+Tokens are signed with HS256 and verified with that algorithm pinned. `JWT_SECRET` must be at least 32 characters long.
 
 ## API Routes
 
@@ -118,17 +127,24 @@ Passwords are stored as bcrypt hashes and are never returned by the API. New use
 
 ### Protected Routes
 
-All protected routes require `Authorization: Bearer <token>`. `ADMIN` has every permission, so it can also perform any `MEMBER` action.
+All protected routes require `Authorization: Bearer <token>`. `ADMIN` has every permission, so it can also perform any `MEMBER` action and act on any user's resources.
 
-| Method                         | Route                      | Required role       |
-| ------------------------------ | -------------------------- | ------------------- |
-| `POST`, `PUT`, `DELETE`        | `/api/categories`          | `ADMIN`             |
-| `POST`, `PUT`, `DELETE`        | `/api/recipes`             | `MEMBER` or `ADMIN` |
-| `GET`, `POST`, `PUT`, `DELETE` | `/api/mealplans`           | Authenticated user  |
-| `GET`                          | `/api/users/:id`           | Authenticated user  |
-| `PUT`, `DELETE`                | `/api/users/:id`           | Authenticated user  |
-| `GET`                          | `/api/users/:id/dashboard` | Authenticated user  |
-| `GET`                          | `/api/users/:id/mealplans/weekly` | Authenticated user |
+| Method                         | Route                             | Required role       | Ownership rule                                  |
+| ------------------------------ | --------------------------------- | ------------------- | ----------------------------------------------- |
+| `GET`                          | `/api/auth/me`                    | Authenticated user  | Returns the caller                              |
+| `POST`, `PUT`, `DELETE`        | `/api/categories`                 | `ADMIN`             | -                                               |
+| `POST`                         | `/api/recipes`                    | `MEMBER` or `ADMIN` | `authorId` defaults to the caller               |
+| `PUT`, `DELETE`                | `/api/recipes/:id`                | `MEMBER` or `ADMIN` | Recipe author only                              |
+| `GET`                          | `/api/mealplans`                  | Authenticated user  | Lists the caller's plans only                   |
+| `POST`                         | `/api/mealplans`                  | Authenticated user  | `userId` defaults to the caller                 |
+| `GET`, `PUT`, `DELETE`         | `/api/mealplans/:id`              | Authenticated user  | Plan owner only                                 |
+| `GET`, `PUT`, `DELETE`         | `/api/users/:id`                  | Authenticated user  | That user only                                  |
+| `GET`                          | `/api/users/:id/dashboard`        | Authenticated user  | That user only                                  |
+| `GET`                          | `/api/users/:id/mealplans/weekly` | Authenticated user  | That user only                                  |
+
+Breaking another user's ownership rule returns `403`. Members cannot set `authorId` or `userId` to another user; only an `ADMIN` can.
+
+Recipe reads stay public, but `isPublic: false` recipes are visible only to their author and to `ADMIN`. Send a token on `GET /api/recipes`, `GET /api/recipes/:id` or `GET /api/categories/:id/recipes` to include your own private recipes. Other users get `404` for them, and they cannot be added to another user's meal plan. If a token is sent on these public routes, it must be valid.
 
 ## Filtering and Pagination
 

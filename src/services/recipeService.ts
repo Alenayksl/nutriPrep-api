@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { AppError } from "../errors/AppError";
+import { Actor, assertCanAccessOwnedBy, canAccessOwnedBy, isAdmin } from "../middleware/authorization";
 import { RecipeFilters, RecipeInput } from "../models/recipe";
 import { prisma } from "../utils/prisma";
 
@@ -34,17 +35,36 @@ const buildWhere = (filters: RecipeFilters): Prisma.RecipeWhereInput => ({
     : {}),
 });
 
-// Prisma reports a missing connect target as P2025, which looks like "recipe not found", so check up front.
-const assertReferencesExist = async (input: RecipeInput): Promise<void> => {
-  const [category, author] = await Promise.all([
-    prisma.category.findUnique({ where: { id: input.categoryId }, select: { id: true } }),
-    prisma.user.findUnique({ where: { id: input.authorId }, select: { id: true } }),
-  ]);
-  if (!category) throw new AppError(400, `Category ${input.categoryId} does not exist.`);
-  if (!author) throw new AppError(400, `Author (user) ${input.authorId} does not exist.`);
+// Anonymous callers see public recipes; members also see their own private ones; ADMIN sees all.
+const visibleTo = (actor?: Actor): Prisma.RecipeWhereInput => {
+  if (!actor) return { isPublic: true };
+  if (isAdmin(actor)) return {};
+  return { OR: [{ isPublic: true }, { authorId: actor.id }] };
 };
 
-const toCreateData = (input: RecipeInput): Prisma.RecipeCreateInput => ({
+export const isRecipeVisibleTo = (recipe: { isPublic: boolean; authorId: number }, actor?: Actor): boolean =>
+  recipe.isPublic || (actor !== undefined && canAccessOwnedBy(actor, recipe.authorId));
+
+// Members always author as themselves; only an ADMIN may attribute a recipe to someone else.
+const resolveAuthorId = (input: RecipeInput, actor: Actor, fallbackAuthorId = actor.id): number => {
+  const authorId = input.authorId ?? fallbackAuthorId;
+  if (authorId !== actor.id && !isAdmin(actor)) {
+    throw new AppError(403, "You can only create or edit recipes as yourself.");
+  }
+  return authorId;
+};
+
+// Prisma reports a missing connect target as P2025, which looks like "recipe not found", so check up front.
+const assertReferencesExist = async (input: RecipeInput, authorId: number): Promise<void> => {
+  const [category, author] = await Promise.all([
+    prisma.category.findUnique({ where: { id: input.categoryId }, select: { id: true } }),
+    prisma.user.findUnique({ where: { id: authorId }, select: { id: true } }),
+  ]);
+  if (!category) throw new AppError(400, `Category ${input.categoryId} does not exist.`);
+  if (!author) throw new AppError(400, `Author (user) ${authorId} does not exist.`);
+};
+
+const toCreateData = (input: RecipeInput, authorId: number): Prisma.RecipeCreateInput => ({
   title: input.title.trim(),
   description: input.description?.trim(),
   ingredients: input.ingredients,
@@ -55,12 +75,12 @@ const toCreateData = (input: RecipeInput): Prisma.RecipeCreateInput => ({
   fat: input.fat,
   isPublic: input.isPublic ?? true,
   category: { connect: { id: input.categoryId } },
-  author: { connect: { id: input.authorId } },
+  author: { connect: { id: authorId } },
 });
 
 export class RecipeService {
-  async getRecipes(filters: RecipeFilters) {
-    const where = buildWhere(filters);
+  async getRecipes(filters: RecipeFilters, actor?: Actor) {
+    const where: Prisma.RecipeWhereInput = { AND: [buildWhere(filters), visibleTo(actor)] };
     const skip = (filters.page - 1) * filters.limit;
 
     const [data, total] = await prisma.$transaction([
@@ -85,21 +105,34 @@ export class RecipeService {
     };
   }
 
-  async getRecipe(id: string) {
+  // Private recipes of other users answer 404, so their existence is not revealed.
+  async getRecipe(id: string, actor?: Actor) {
     const recipe = await prisma.recipe.findUnique({
       where: { id: parseId(id) },
       include: recipeInclude,
     });
 
-    if (!recipe) throw new AppError(404, "Recipe not found.");
+    if (!recipe || !isRecipeVisibleTo(recipe, actor)) throw new AppError(404, "Recipe not found.");
     return recipe;
   }
 
-  async createRecipe(input: RecipeInput) {
-    await assertReferencesExist(input);
+  // Loads a recipe for a write, allowing only its author or an ADMIN.
+  private async getOwnedRecipe(recipeId: number, actor: Actor) {
+    const recipe = await prisma.recipe.findUnique({
+      where: { id: recipeId },
+      select: { id: true, authorId: true, isPublic: true },
+    });
+    if (!recipe || !isRecipeVisibleTo(recipe, actor)) throw new AppError(404, "Recipe not found.");
+    assertCanAccessOwnedBy(actor, recipe.authorId, "You can only modify recipes you authored.");
+    return recipe;
+  }
+
+  async createRecipe(input: RecipeInput, actor: Actor) {
+    const authorId = resolveAuthorId(input, actor);
+    await assertReferencesExist(input, authorId);
     try {
       return await prisma.recipe.create({
-        data: toCreateData(input),
+        data: toCreateData(input, authorId),
         include: recipeInclude,
       });
     } catch (error) {
@@ -110,13 +143,15 @@ export class RecipeService {
     }
   }
 
-  async updateRecipe(id: string, input: RecipeInput) {
-    const recipeId = parseId(id);
-    await assertReferencesExist(input);
+  async updateRecipe(id: string, input: RecipeInput, actor: Actor) {
+    const existing = await this.getOwnedRecipe(parseId(id), actor);
+    // Omitting authorId keeps the current author (so an ADMIN edit does not take over the recipe).
+    const authorId = resolveAuthorId(input, actor, existing.authorId);
+    await assertReferencesExist(input, authorId);
     try {
       return await prisma.recipe.update({
-        where: { id: recipeId },
-        data: toCreateData(input),
+        where: { id: existing.id },
+        data: toCreateData(input, authorId),
         include: recipeInclude,
       });
     } catch (error) {
@@ -130,9 +165,10 @@ export class RecipeService {
     }
   }
 
-  async deleteRecipe(id: string): Promise<void> {
+  async deleteRecipe(id: string, actor: Actor): Promise<void> {
+    const existing = await this.getOwnedRecipe(parseId(id), actor);
     try {
-      await prisma.recipe.delete({ where: { id: parseId(id) } });
+      await prisma.recipe.delete({ where: { id: existing.id } });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
         throw new AppError(404, "Recipe not found.");
