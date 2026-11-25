@@ -4,6 +4,7 @@ import express, { Request, Response } from "express";
 import categoryRoutes from "./routes/categoryRoutes";
 import authRoutes from "./routes/authRoutes";
 import mealPlanRoutes from "./routes/mealPlanRoutes";
+import oauthRoutes from "./routes/oauthRoutes";
 import recipeRoutes from "./routes/recipeRoutes";
 import userRoutes from "./routes/userRoutes";
 import { errorHandler } from "./middleware/errorHandler";
@@ -27,6 +28,7 @@ export const createServer = () => {
     }),
   );
   app.use(express.json());
+  app.use(express.urlencoded({ extended: false }));
 
   app.get("/api/health", (_req: Request, res: Response) => {
     res.status(200).json({
@@ -51,6 +53,7 @@ export const createServer = () => {
   app.use("/api/mealplans", mealPlanRoutes);
   app.use("/api/users", userRoutes);
   app.use("/api/auth", authRoutes);
+  app.use("/api/oauth", oauthRoutes);
 
   app.use((_req: Request, res: Response) => {
     res.status(404).json({

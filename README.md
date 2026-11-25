@@ -50,6 +50,10 @@ The API runs at `http://localhost:5000` by default.
 | `JWT_EXPIRES_IN` | Token lifetime                        | `1h`                                                                |
 | `ADMIN_EMAIL`    | Email of the seeded admin user        | `admin@nutriprep.local`                                             |
 | `ADMIN_PASSWORD` | Password of the seeded admin user     | Any local value                                                     |
+| `REFRESH_TOKEN_EXPIRES_DAYS`  | OAuth2 refresh token lifetime in days          | `30`                |
+| `OAUTH_WEB_CLIENT_ID`         | Seeded public client (password + refresh)      | `nutriprep-web`     |
+| `OAUTH_SERVICE_CLIENT_ID`     | Seeded confidential machine client             | `nutriprep-service` |
+| `OAUTH_SERVICE_CLIENT_SECRET` | Secret of the machine client (seed skips it if unset) | Long random value |
 
 Never commit `.env`. Use `.env.example` as the configuration template.
 
@@ -61,12 +65,37 @@ npm run build            # Compile TypeScript to dist/
 npm start                # Start the compiled server
 npm run prisma:generate  # Generate Prisma Client
 npm run prisma:migrate   # Run Prisma migrations
-npm run prisma:seed      # Create or update the admin user
+npm run prisma:seed      # Create or update the admin user and OAuth2 clients
 ```
 
-## Authentication
+## Authentication (OAuth2, role based)
 
-Register a user:
+The API is its own OAuth 2.0 authorization server and resource server. Access tokens are short-lived JWTs (HS256, `JWT_EXPIRES_IN`). Refresh tokens are random strings; only their SHA-256 hash is stored in the database.
+
+### Roles become scopes
+
+A token's permissions are **scopes**. The scopes a user can receive come from their role:
+
+| Role     | Scopes                                                                |
+| -------- | --------------------------------------------------------------------- |
+| `GUEST`  | `profile`, `categories:read`, `recipes:read`                          |
+| `MEMBER` | every `GUEST` scope + `recipes:write`, `mealplans:read`, `mealplans:write` |
+| `ADMIN`  | every `MEMBER` scope + `categories:write`                             |
+
+Granted scopes = requested scopes ∩ role scopes ∩ the client's allowed scopes. Leaving `scope` empty requests everything allowed. Asking for a scope outside that set returns `invalid_scope`, so a member can never get `categories:write`. A client can also ask for less (e.g. `scope=profile`) to get a token that can only read the profile.
+
+On every refresh, scopes are re-checked against the user's **current** role, so demoting a user takes effect at their next refresh at the latest.
+
+### Clients
+
+`npm run prisma:seed` creates two clients:
+
+| Client              | Type                    | Grants                       | Scopes             |
+| ------------------- | ----------------------- | ---------------------------- | ------------------ |
+| `nutriprep-web`     | Public (no secret)      | `password`, `refresh_token`  | All (capped by role) |
+| `nutriprep-service` | Confidential (secret)   | `client_credentials`         | `categories:read`, `categories:write` |
+
+### Register
 
 ```http
 POST /api/users/register
@@ -79,34 +108,92 @@ Content-Type: application/json
 }
 ```
 
-Login:
+New users get the `MEMBER` role. Passwords are stored as bcrypt hashes and are never returned.
+
+### Get a token: password grant
 
 ```http
-POST /api/auth/login
-Content-Type: application/json
+POST /api/oauth/token
+Content-Type: application/x-www-form-urlencoded
 
+grant_type=password&client_id=nutriprep-web&username=ada@example.com&password=strong-password
+```
+
+```json
 {
-  "email": "ada@example.com",
-  "password": "strong-password"
+  "access_token": "eyJ...",
+  "token_type": "Bearer",
+  "expires_in": 3600,
+  "scope": "profile categories:read recipes:read recipes:write mealplans:read mealplans:write",
+  "refresh_token": "Vb3..."
 }
 ```
 
-Use the returned token on protected requests:
+The token endpoint also accepts a JSON body. Add `&scope=profile mealplans:read` to request fewer scopes.
+
+> The password grant is meant for first-party apps such as this project's own frontend. OAuth 2.1 drops it in favor of Authorization Code + PKCE, which needs a browser login page.
+
+### Refresh
 
 ```http
-Authorization: Bearer <token>
+POST /api/oauth/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=refresh_token&client_id=nutriprep-web&refresh_token=Vb3...
 ```
 
-Read the user behind the token:
+Each refresh token works **once**. The response contains a new one (rotation). If an already-used refresh token is sent again, the API treats it as stolen and revokes every refresh token of that user for that client. A refresh can narrow the scope but never widen it.
+
+### Machine-to-machine: client credentials
+
+```http
+POST /api/oauth/token
+Authorization: Basic base64(nutriprep-service:<secret>)
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=client_credentials
+```
+
+The token represents the client, not a user. It carries no refresh token and works only on routes whose scope the client has, for example category writes. Routes that act on a user's own data (`/auth/me`, `/users/:id`, meal plans, recipe writes) answer `403` to it. Confidential clients can also send `client_id` and `client_secret` in the body.
+
+### Revoke (logout)
+
+```http
+POST /api/oauth/revoke
+Content-Type: application/x-www-form-urlencoded
+
+client_id=nutriprep-web&token=Vb3...
+```
+
+Always answers `200` (RFC 7009), whether or not the token existed.
+
+### Use the token
 
 ```http
 GET /api/auth/me
-Authorization: Bearer <token>
+Authorization: Bearer <access_token>
 ```
 
-Passwords are stored as bcrypt hashes and are never returned by the API. New users receive the Prisma default `MEMBER` role.
+### Errors
 
-Tokens are signed with HS256 and verified with that algorithm pinned. `JWT_SECRET` must be at least 32 characters long.
+The token endpoint answers with the RFC 6749 shape: `{ "error": "invalid_grant", "error_description": "..." }`.
+
+| Error                    | Status | When                                                        |
+| ------------------------ | ------ | ----------------------------------------------------------- |
+| `invalid_request`        | 400    | Missing `grant_type`, `username`, `refresh_token`, ...      |
+| `invalid_client`         | 401    | Unknown client or wrong client secret                       |
+| `invalid_grant`          | 400    | Wrong password; expired, revoked or reused refresh token     |
+| `unauthorized_client`    | 400    | The client may not use that grant type                      |
+| `unsupported_grant_type` | 400    | Unknown grant type                                          |
+| `invalid_scope`          | 400    | Requested scope is outside what the role/client allows      |
+
+Protected routes follow RFC 6750: `401` with `WWW-Authenticate: Bearer error="invalid_token"` for a missing, invalid or expired token, and `403` with `error="insufficient_scope"` when the token lacks a required scope.
+
+### Legacy login
+
+`POST /api/auth/login` with `{ "email", "password" }` still works for existing clients. It returns `{ token, user }`, where `token` carries every scope of the user's role and comes without a refresh token. New clients should use `/api/oauth/token`.
+
+`JWT_SECRET` must be at least 32 characters long. Token verification pins the HS256 algorithm.
 
 ## API Routes
 
@@ -116,7 +203,9 @@ Tokens are signed with HS256 and verified with that algorithm pinned. `JWT_SECRE
 | ------ | --------------------- | ----------------------- |
 | `GET`  | `/api/health`         | Health check            |
 | `GET`  | `/api/test`           | Test endpoint           |
-| `POST` | `/api/auth/login`     | Login and receive a JWT |
+| `POST` | `/api/oauth/token`    | OAuth2 token endpoint   |
+| `POST` | `/api/oauth/revoke`   | Revoke a refresh token  |
+| `POST` | `/api/auth/login`     | Legacy login (JWT)      |
 | `POST` | `/api/users/register` | Register a member       |
 | `GET`  | `/api/categories`     | List categories         |
 | `GET`  | `/api/categories/:id` | Read a category         |
@@ -125,22 +214,33 @@ Tokens are signed with HS256 and verified with that algorithm pinned. `JWT_SECRE
 | `GET`  | `/api/recipes/presets` | List nutrition presets |
 | `GET`  | `/api/recipes/:id`    | Read a recipe           |
 
+Public reads still work without a token. A request that **does** send a token must have the read scope for that route, or it gets `403 insufficient_scope`:
+
+| Route                                                         | Scope needed when a token is sent   |
+| ------------------------------------------------------------- | ----------------------------------- |
+| `GET /api/categories`, `GET /api/categories/:id`              | `categories:read`                   |
+| `GET /api/categories/:id/recipes`                             | `categories:read`, `recipes:read`   |
+| `GET /api/recipes`, `GET /api/recipes/presets`, `GET /api/recipes/:id` | `recipes:read`             |
+
+Every role, `GUEST` included, has both read scopes. A token requested with only `scope=profile` cannot read them.
+
 ### Protected Routes
 
-All protected routes require `Authorization: Bearer <token>`. `ADMIN` has every permission, so it can also perform any `MEMBER` action and act on any user's resources.
+All protected routes require `Authorization: Bearer <access_token>` with the listed scope. Missing scope → `403 insufficient_scope`. `ADMIN` passes every ownership rule and can act on any user's resources.
 
-| Method                         | Route                             | Required role       | Ownership rule                                  |
-| ------------------------------ | --------------------------------- | ------------------- | ----------------------------------------------- |
-| `GET`                          | `/api/auth/me`                    | Authenticated user  | Returns the caller                              |
-| `POST`, `PUT`, `DELETE`        | `/api/categories`                 | `ADMIN`             | -                                               |
-| `POST`                         | `/api/recipes`                    | `MEMBER` or `ADMIN` | `authorId` defaults to the caller               |
-| `PUT`, `DELETE`                | `/api/recipes/:id`                | `MEMBER` or `ADMIN` | Recipe author only                              |
-| `GET`                          | `/api/mealplans`                  | Authenticated user  | Lists the caller's plans only                   |
-| `POST`                         | `/api/mealplans`                  | Authenticated user  | `userId` defaults to the caller                 |
-| `GET`, `PUT`, `DELETE`         | `/api/mealplans/:id`              | Authenticated user  | Plan owner only                                 |
-| `GET`, `PUT`, `DELETE`         | `/api/users/:id`                  | Authenticated user  | That user only                                  |
-| `GET`                          | `/api/users/:id/dashboard`        | Authenticated user  | That user only                                  |
-| `GET`                          | `/api/users/:id/mealplans/weekly` | Authenticated user  | That user only                                  |
+| Method                         | Route                             | Required scope                     | Ownership rule                    |
+| ------------------------------ | --------------------------------- | ---------------------------------- | --------------------------------- |
+| `GET`                          | `/api/auth/me`                    | `profile`                          | Returns the caller                |
+| `POST`, `PUT`, `DELETE`        | `/api/categories`                 | `categories:write`                 | -                                 |
+| `POST`                         | `/api/recipes`                    | `recipes:write`                    | `authorId` defaults to the caller |
+| `PUT`, `DELETE`                | `/api/recipes/:id`                | `recipes:write`                    | Recipe author only                |
+| `GET`                          | `/api/mealplans`                  | `mealplans:read`                   | Lists the caller's plans only     |
+| `GET`                          | `/api/mealplans/:id`              | `mealplans:read`                   | Plan owner only                   |
+| `POST`                         | `/api/mealplans`                  | `mealplans:write`                  | `userId` defaults to the caller   |
+| `PUT`, `DELETE`                | `/api/mealplans/:id`              | `mealplans:write`                  | Plan owner only                   |
+| `GET`, `PUT`, `DELETE`         | `/api/users/:id`                  | `profile`                          | That user only                    |
+| `GET`                          | `/api/users/:id/dashboard`        | `profile`, `mealplans:read`        | That user only                    |
+| `GET`                          | `/api/users/:id/mealplans/weekly` | `profile`, `mealplans:read`        | That user only                    |
 
 Breaking another user's ownership rule returns `403`. Members cannot set `authorId` or `userId` to another user; only an `ADMIN` can.
 
@@ -210,7 +310,7 @@ Collection responses include pagination metadata:
 
 ## Postman Collection
 
-`postman/NutriPrep-API.postman_collection.json` contains requests for every API method, including error cases (400, 401, 403, 404). Import it into Postman and run it with the Collection Runner: requests save `token`, `adminToken`, `userId`, `categoryId`, `recipeId` and `mealPlanId` into collection variables, and the last folder deletes the created data.
+`postman/NutriPrep-API.postman_collection.json` contains requests for every API method, including error cases (400, 401, 403, 404). Import it into Postman and run it with the Collection Runner: requests save `token`, `adminToken`, `userId`, `categoryId`, `recipeId` and `mealPlanId` into collection variables, and the last folder deletes the created data. The `2b. OAuth2` folder walks through the password, refresh, client credentials and revoke flows. Set the `serviceClientSecret` collection variable to your `OAUTH_SERVICE_CLIENT_SECRET` first.
 
 It can also be run from the command line:
 

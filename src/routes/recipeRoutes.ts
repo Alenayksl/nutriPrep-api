@@ -1,20 +1,18 @@
-import { Role } from "@prisma/client";
 import { Router } from "express";
 import { getAllRecipes, getRecipeById, getRecipePresets, createRecipe, updateRecipe, deleteRecipe } from "../controllers/recipeController";
 import { authenticateToken, optionalAuthentication } from "../middleware/authentication";
-import { requireRole } from "../middleware/authorization";
+import { requireScope, requireScopeIfAuthenticated } from "../middleware/authorization";
 import { validateRecipe } from "../middleware/validation";
+import { SCOPES } from "../models/oauth";
 
 const router = Router();
 
-// Reads are public; a token (if sent) also reveals the caller's own private recipes.
-router.get('/', optionalAuthentication, getAllRecipes);
-router.get('/presets', getRecipePresets);
-router.get('/:id', optionalAuthentication, getRecipeById);
+const readRecipes = [optionalAuthentication, requireScopeIfAuthenticated(SCOPES.RECIPES_READ)];
+router.get('/', readRecipes, getAllRecipes);
+router.get('/presets', readRecipes, getRecipePresets);
+router.get('/:id', readRecipes, getRecipeById);
 
-// Writes: MEMBER or ADMIN; the service also limits update/delete to the recipe's author or an ADMIN.
-
-router.use(authenticateToken, requireRole(Role.MEMBER));
+router.use(authenticateToken, requireScope(SCOPES.RECIPES_WRITE));
 router.post('/', validateRecipe, createRecipe);
 router.put('/:id', validateRecipe, updateRecipe);
 router.delete('/:id', deleteRecipe);

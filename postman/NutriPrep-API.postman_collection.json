@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "NutriPrep API",
-    "description": "Full request collection for the NutriPrep REST API.\n\nRun the folders in order (or use Collection Runner): Auth stores `token`, `adminToken` and `userId`; create requests store `categoryId`, `recipeId` and `mealPlanId` for later requests. The admin user comes from `npm run prisma:seed` (ADMIN_EMAIL / ADMIN_PASSWORD in .env).",
+    "description": "Full request collection for the NutriPrep REST API.\n\nRun the folders in order (or use Collection Runner): Auth stores `token`, `adminToken` and `userId`; create requests store `categoryId`, `recipeId` and `mealPlanId` for later requests. The admin user comes from `npm run prisma:seed` (ADMIN_EMAIL / ADMIN_PASSWORD in .env).\n\n`2b. OAuth2` covers the OAuth2 token endpoint: password, refresh (rotation), narrow scopes, client credentials and revocation. Set `serviceClientSecret` to your OAUTH_SERVICE_CLIENT_SECRET.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -60,6 +60,38 @@
     {
       "key": "day",
       "value": "Monday"
+    },
+    {
+      "key": "webClientId",
+      "value": "nutriprep-web"
+    },
+    {
+      "key": "serviceClientId",
+      "value": "nutriprep-service"
+    },
+    {
+      "key": "serviceClientSecret",
+      "value": "replace-with-a-long-random-client-secret"
+    },
+    {
+      "key": "oauthAccessToken",
+      "value": ""
+    },
+    {
+      "key": "oauthRefreshToken",
+      "value": ""
+    },
+    {
+      "key": "usedRefreshToken",
+      "value": ""
+    },
+    {
+      "key": "narrowAccessToken",
+      "value": ""
+    },
+    {
+      "key": "serviceAccessToken",
+      "value": ""
     }
   ],
   "item": [
@@ -328,6 +360,870 @@
                   "const body = pm.response.json();",
                   "pm.test(\"Returns the logged-in member\", () => pm.expect(body.data.id).to.eql(Number(pm.collectionVariables.get(\"userId\"))));",
                   "pm.test(\"Password is not returned\", () => pm.expect(body.data).to.not.have.property(\"password\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2b. OAuth2",
+      "description": "Role-based OAuth2: the user's role decides which scopes a token can carry. Needs the member registered in folder 2 and the seeded OAuth clients (`npm run prisma:seed`). Set `serviceClientSecret` to your OAUTH_SERVICE_CLIENT_SECRET for the client credentials requests.",
+      "item": [
+        {
+          "name": "Token - Password Grant (Member)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/oauth/token",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "oauth",
+                "token"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "grant_type",
+                  "value": "password",
+                  "type": "text"
+                },
+                {
+                  "key": "client_id",
+                  "value": "{{webClientId}}",
+                  "type": "text"
+                },
+                {
+                  "key": "username",
+                  "value": "{{memberEmail}}",
+                  "type": "text"
+                },
+                {
+                  "key": "password",
+                  "value": "{{memberPassword}}",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Bearer token with refresh token\", () => { pm.expect(body.token_type).to.eql(\"Bearer\"); pm.expect(body.refresh_token).to.be.a(\"string\"); });",
+                  "pm.test(\"MEMBER role scopes\", () => pm.expect(body.scope).to.eql(\"profile categories:read recipes:read recipes:write mealplans:read mealplans:write\"));",
+                  "pm.test(\"Not cached\", () => pm.expect(pm.response.headers.get(\"Cache-Control\")).to.eql(\"no-store\"));",
+                  "pm.collectionVariables.set(\"oauthAccessToken\", body.access_token);",
+                  "pm.collectionVariables.set(\"oauthRefreshToken\", body.refresh_token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Me With OAuth Access Token",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "me"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{oauthAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Returns the member\", () => pm.expect(pm.response.json().data.email).to.eql(pm.collectionVariables.get(\"memberEmail\").toLowerCase()));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Token - Refresh (Rotation)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/oauth/token",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "oauth",
+                "token"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "grant_type",
+                  "value": "refresh_token",
+                  "type": "text"
+                },
+                {
+                  "key": "client_id",
+                  "value": "{{webClientId}}",
+                  "type": "text"
+                },
+                {
+                  "key": "refresh_token",
+                  "value": "{{oauthRefreshToken}}",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "const previous = pm.collectionVariables.get(\"oauthRefreshToken\");",
+                  "pm.test(\"Refresh token was rotated\", () => pm.expect(body.refresh_token).to.not.eql(previous));",
+                  "pm.collectionVariables.set(\"usedRefreshToken\", previous);",
+                  "pm.collectionVariables.set(\"oauthAccessToken\", body.access_token);",
+                  "pm.collectionVariables.set(\"oauthRefreshToken\", body.refresh_token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Token - Narrow Scope (profile only)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/oauth/token",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "oauth",
+                "token"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "grant_type",
+                  "value": "password",
+                  "type": "text"
+                },
+                {
+                  "key": "client_id",
+                  "value": "{{webClientId}}",
+                  "type": "text"
+                },
+                {
+                  "key": "username",
+                  "value": "{{memberEmail}}",
+                  "type": "text"
+                },
+                {
+                  "key": "password",
+                  "value": "{{memberPassword}}",
+                  "type": "text"
+                },
+                {
+                  "key": "scope",
+                  "value": "profile",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Only profile granted\", () => pm.expect(body.scope).to.eql(\"profile\"));",
+                  "pm.collectionVariables.set(\"narrowAccessToken\", body.access_token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "403 - Profile-Only Token Reads Meal Plans",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/mealplans",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "mealplans"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{narrowAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 403\", () => pm.response.to.have.status(403));",
+                  "pm.test(\"insufficient_scope challenge\", () => pm.expect(pm.response.headers.get(\"WWW-Authenticate\")).to.include(\"insufficient_scope\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Read Recipes With Member Token",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/recipes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "recipes"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{oauthAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "403 - Profile-Only Token Reads Recipes",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/recipes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "recipes"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{narrowAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 403\", () => pm.response.to.have.status(403));",
+                  "pm.test(\"insufficient_scope challenge\", () => pm.expect(pm.response.headers.get(\"WWW-Authenticate\")).to.include(\"insufficient_scope\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "400 - Member Requests Admin Scope",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/oauth/token",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "oauth",
+                "token"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "grant_type",
+                  "value": "password",
+                  "type": "text"
+                },
+                {
+                  "key": "client_id",
+                  "value": "{{webClientId}}",
+                  "type": "text"
+                },
+                {
+                  "key": "username",
+                  "value": "{{memberEmail}}",
+                  "type": "text"
+                },
+                {
+                  "key": "password",
+                  "value": "{{memberPassword}}",
+                  "type": "text"
+                },
+                {
+                  "key": "scope",
+                  "value": "categories:write",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 400\", () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"OAuth error is invalid_scope\", () => pm.expect(body.error).to.eql(\"invalid_scope\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Token - Password Grant (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/oauth/token",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "oauth",
+                "token"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "grant_type",
+                  "value": "password",
+                  "type": "text"
+                },
+                {
+                  "key": "client_id",
+                  "value": "{{webClientId}}",
+                  "type": "text"
+                },
+                {
+                  "key": "username",
+                  "value": "{{adminEmail}}",
+                  "type": "text"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminPassword}}",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"ADMIN role includes categories:write\", () => pm.expect(body.scope.split(\" \")).to.include(\"categories:write\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Token - Client Credentials (Service)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/oauth/token",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "oauth",
+                "token"
+              ]
+            },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{serviceClientId}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{serviceClientSecret}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "grant_type",
+                  "value": "client_credentials",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Client scopes only, no refresh token\", () => { pm.expect(body.scope).to.eql(\"categories:read categories:write\"); pm.expect(body).to.not.have.property(\"refresh_token\"); });",
+                  "pm.collectionVariables.set(\"serviceAccessToken\", body.access_token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "403 - Service Token On User Route",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "me"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{serviceAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 403\", () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "401 - Wrong Client Secret",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/oauth/token",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "oauth",
+                "token"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "grant_type",
+                  "value": "client_credentials",
+                  "type": "text"
+                },
+                {
+                  "key": "client_id",
+                  "value": "{{serviceClientId}}",
+                  "type": "text"
+                },
+                {
+                  "key": "client_secret",
+                  "value": "wrong-secret",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 401\", () => pm.response.to.have.status(401));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"OAuth error is invalid_client\", () => pm.expect(body.error).to.eql(\"invalid_client\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "400 - Web Client Uses Client Credentials",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/oauth/token",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "oauth",
+                "token"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "grant_type",
+                  "value": "client_credentials",
+                  "type": "text"
+                },
+                {
+                  "key": "client_id",
+                  "value": "{{webClientId}}",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 400\", () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"OAuth error is unauthorized_client\", () => pm.expect(body.error).to.eql(\"unauthorized_client\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Revoke Refresh Token (Logout)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/oauth/revoke",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "oauth",
+                "revoke"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "client_id",
+                  "value": "{{webClientId}}",
+                  "type": "text"
+                },
+                {
+                  "key": "token",
+                  "value": "{{oauthRefreshToken}}",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "400 - Refresh After Revoke",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/oauth/token",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "oauth",
+                "token"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "grant_type",
+                  "value": "refresh_token",
+                  "type": "text"
+                },
+                {
+                  "key": "client_id",
+                  "value": "{{webClientId}}",
+                  "type": "text"
+                },
+                {
+                  "key": "refresh_token",
+                  "value": "{{oauthRefreshToken}}",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 400\", () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"OAuth error is invalid_grant\", () => pm.expect(body.error).to.eql(\"invalid_grant\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "400 - Reuse Rotated Refresh Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/oauth/token",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "oauth",
+                "token"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "grant_type",
+                  "value": "refresh_token",
+                  "type": "text"
+                },
+                {
+                  "key": "client_id",
+                  "value": "{{webClientId}}",
+                  "type": "text"
+                },
+                {
+                  "key": "refresh_token",
+                  "value": "{{usedRefreshToken}}",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 400\", () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"OAuth error is invalid_grant\", () => pm.expect(body.error).to.eql(\"invalid_grant\"));"
                 ]
               }
             }

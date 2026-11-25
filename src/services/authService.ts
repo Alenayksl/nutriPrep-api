@@ -1,8 +1,9 @@
 import { AppError } from "../errors/AppError";
 import { Actor } from "../middleware/authorization";
 import { LoginInput } from "../models/auth";
+import { ROLE_SCOPES } from "../models/oauth";
 import { userService } from "./userService";
-import { generateToken } from "../utils/jwt";
+import { signAccessToken } from "../utils/jwt";
 
 export class AuthService {
   async login(input: LoginInput) {
@@ -10,12 +11,11 @@ export class AuthService {
     if (!user) throw new AppError(401, "Invalid email or password.");
 
     return {
-      token: generateToken({ sub: user.id, role: user.role }),
+      token: signAccessToken({ user: { id: user.id, role: user.role }, scopes: [...ROLE_SCOPES[user.role]] }).token,
       user,
     };
   }
 
-  // Reads the user fresh from the database, so a deleted account is rejected even with a valid token.
   async getCurrentUser(actor: Actor) {
     try {
       return await userService.getUser(String(actor.id));

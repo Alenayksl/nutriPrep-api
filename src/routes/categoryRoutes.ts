@@ -1,18 +1,19 @@
-import { Role } from "@prisma/client";
 import { Router } from "express";
 import { getAllCategories, createCategory, getCategoryById, updateCategory, deleteCategory } from "../controllers/categoryController";
 import { getRecipesByCategory } from "../controllers/recipeController";
 import { authenticateToken, optionalAuthentication } from "../middleware/authentication";
-import { requireRole } from "../middleware/authorization";
+import { requireScope, requireScopeIfAuthenticated } from "../middleware/authorization";
 import { validateCategory } from "../middleware/validation";
+import { SCOPES } from "../models/oauth";
 
 const router = Router();
 
-router.get('/', getAllCategories);
-router.get('/:id', getCategoryById);
-router.get('/:id/recipes', optionalAuthentication, getRecipesByCategory);
+const readCategories = [optionalAuthentication, requireScopeIfAuthenticated(SCOPES.CATEGORIES_READ)];
+router.get('/', readCategories, getAllCategories);
+router.get('/:id', readCategories, getCategoryById);
+router.get('/:id/recipes', readCategories, requireScopeIfAuthenticated(SCOPES.RECIPES_READ), getRecipesByCategory);
 
-router.use(authenticateToken, requireRole(Role.ADMIN));
+router.use(authenticateToken, requireScope(SCOPES.CATEGORIES_WRITE));
 router.post('/', validateCategory, createCategory);
 router.put('/:id', validateCategory, updateCategory);
 router.delete('/:id', deleteCategory);

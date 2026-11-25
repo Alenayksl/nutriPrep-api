@@ -1,14 +1,22 @@
 import jwt, { SignOptions } from "jsonwebtoken";
 import { Role } from "@prisma/client";
 import { AppError } from "../errors/AppError";
-
-export interface AuthTokenPayload {
-  sub: number;
-  role: Role;
-}
+import { isScope, Scope, toScopeString } from "../models/oauth";
 
 const JWT_ALGORITHM = "HS256";
 const MIN_SECRET_LENGTH = 32;
+const CLIENT_SUBJECT_PREFIX = "client:";
+
+export interface AccessTokenClaims {
+  user?: { id: number; role: Role };
+  clientId?: string;
+  scopes: Scope[];
+}
+
+export interface SignedAccessToken {
+  token: string;
+  expiresIn: number;
+}
 
 const getJwtSecret = (): string => {
   const secret = process.env.JWT_SECRET;
@@ -19,28 +27,46 @@ const getJwtSecret = (): string => {
   return secret;
 };
 
-export const generateToken = (payload: AuthTokenPayload): string => {
+const invalidToken = () =>
+  new AppError(401, "Invalid authentication token.", { "WWW-Authenticate": 'Bearer error="invalid_token"' });
+
+export const signAccessToken = (claims: AccessTokenClaims): SignedAccessToken => {
+  const subject = claims.user ? String(claims.user.id) : `${CLIENT_SUBJECT_PREFIX}${claims.clientId}`;
   const options: SignOptions = {
     algorithm: JWT_ALGORITHM,
     expiresIn: (process.env.JWT_EXPIRES_IN ?? "1h") as SignOptions["expiresIn"],
+    subject,
   };
 
-  // jsonwebtoken requires `sub` to be a string; verifyToken converts it back to a number.
-  return jwt.sign({ role: payload.role }, getJwtSecret(), { ...options, subject: String(payload.sub) });
+  const payload = {
+    scope: toScopeString(claims.scopes),
+    ...(claims.user && { role: claims.user.role }),
+    ...(claims.clientId && { client_id: claims.clientId }),
+  };
+  const token = jwt.sign(payload, getJwtSecret(), options);
+
+  const { iat, exp } = jwt.decode(token) as { iat: number; exp: number };
+  return { token, expiresIn: exp - iat };
 };
 
-export const verifyToken = (token: string): AuthTokenPayload => {
-  // Pinning the algorithm rejects tokens signed with "none" or a different algorithm.
+export const verifyAccessToken = (token: string): AccessTokenClaims => {
   const decoded = jwt.verify(token, getJwtSecret(), { algorithms: [JWT_ALGORITHM] });
-  if (typeof decoded !== "object" || decoded === null) {
-    throw new AppError(401, "Invalid authentication token.");
+  if (typeof decoded !== "object" || decoded === null || typeof decoded.sub !== "string") throw invalidToken();
+
+  if (typeof decoded.scope !== "string") throw invalidToken();
+  const scopes = decoded.scope.split(" ").filter(Boolean);
+  if (!scopes.every(isScope)) throw invalidToken();
+
+  const clientId = typeof decoded.client_id === "string" ? decoded.client_id : undefined;
+
+  if (decoded.sub.startsWith(CLIENT_SUBJECT_PREFIX)) {
+    if (!clientId || decoded.sub !== `${CLIENT_SUBJECT_PREFIX}${clientId}`) throw invalidToken();
+    return { clientId, scopes };
   }
 
   const userId = Number(decoded.sub);
   const role = decoded.role;
-  if (!Number.isInteger(userId) || userId < 1 || !Object.values(Role).includes(role)) {
-    throw new AppError(401, "Invalid authentication token.");
-  }
+  if (!Number.isInteger(userId) || userId < 1 || !Object.values(Role).includes(role)) throw invalidToken();
 
-  return { sub: userId, role };
+  return { user: { id: userId, role }, clientId, scopes };
 };
