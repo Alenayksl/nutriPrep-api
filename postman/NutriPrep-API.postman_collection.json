@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "NutriPrep API",
-    "description": "Full request collection for the NutriPrep REST API.\n\nRun the folders in order (or use Collection Runner): Auth stores `token`, `adminToken` and `userId`; create requests store `categoryId`, `recipeId` and `mealPlanId` for later requests. The admin user comes from `npm run prisma:seed` (ADMIN_EMAIL / ADMIN_PASSWORD in .env).\n\n`2b. OAuth2` covers the OAuth2 token endpoint: password, refresh (rotation), narrow scopes, client credentials and revocation. Set `serviceClientSecret` to your OAUTH_SERVICE_CLIENT_SECRET.",
+    "description": "Full request collection for the NutriPrep REST API.\n\nRun the folders in order (or use Collection Runner): Auth stores `token`, `adminToken` and `userId`; create requests store `categoryId`, `recipeId` and `mealPlanId` for later requests. The admin user comes from `npm run prisma:seed` (ADMIN_EMAIL / ADMIN_PASSWORD in .env).\n\n`2b. OAuth2` covers the OAuth2 token endpoint: password, refresh (rotation), narrow scopes, client credentials and revocation. Set `serviceClientSecret` to your OAUTH_SERVICE_CLIENT_SECRET.\n\n`7b. Authentication & Authorization Proof` shows requirement 3 step by step: token verification (tampered, forged alg=none, wrong scheme), role-based scopes, and ownership rules.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -91,6 +91,22 @@
     },
     {
       "key": "serviceAccessToken",
+      "value": ""
+    },
+    {
+      "key": "systemRecipeId",
+      "value": ""
+    },
+    {
+      "key": "privateRecipeId",
+      "value": ""
+    },
+    {
+      "key": "tamperedToken",
+      "value": ""
+    },
+    {
+      "key": "forgedToken",
       "value": ""
     }
   ],
@@ -267,7 +283,17 @@
                   "pm.test(\"Response is JSON\", () => pm.response.to.be.json);",
                   "const body = pm.response.json();",
                   "pm.collectionVariables.set(\"token\", body.data.token);",
-                  "pm.test(\"Token returned\", () => pm.expect(body.data.token).to.be.a(\"string\"));"
+                  "pm.test(\"Token returned\", () => pm.expect(body.data.token).to.be.a(\"string\"));",
+                  "const cryptoJs = require(\"crypto-js\");",
+                  "const decodeJwt = (t) => JSON.parse(cryptoJs.enc.Base64.parse(t.split(\".\")[1].replace(/-/g, \"+\").replace(/_/g, \"/\")).toString(cryptoJs.enc.Utf8));",
+                  "const claims = decodeJwt(body.data.token);",
+                  "pm.test(\"JWT role claim is MEMBER\", () => pm.expect(claims.role).to.eql(\"MEMBER\"));",
+                  "pm.test(\"JWT carries member scopes but not categories:write\", () => {",
+                  "  const scopes = claims.scope.split(\" \");",
+                  "  pm.expect(scopes).to.include.members([\"recipes:write\", \"mealplans:write\"]);",
+                  "  pm.expect(scopes).to.not.include(\"categories:write\");",
+                  "});",
+                  "pm.test(\"JWT expires\", () => pm.expect(claims.exp).to.be.above(claims.iat));"
                 ]
               }
             }
@@ -317,7 +343,12 @@
                   "const body = pm.response.json();",
                   "pm.collectionVariables.set(\"adminToken\", body.data.token);",
                   "pm.collectionVariables.set(\"adminUserId\", body.data.user.id);",
-                  "pm.test(\"Role is ADMIN\", () => pm.expect(body.data.user.role).to.eql(\"ADMIN\"));"
+                  "pm.test(\"Role is ADMIN\", () => pm.expect(body.data.user.role).to.eql(\"ADMIN\"));",
+                  "const cryptoJs = require(\"crypto-js\");",
+                  "const decodeJwt = (t) => JSON.parse(cryptoJs.enc.Base64.parse(t.split(\".\")[1].replace(/-/g, \"+\").replace(/_/g, \"/\")).toString(cryptoJs.enc.Utf8));",
+                  "const claims = decodeJwt(body.data.token);",
+                  "pm.test(\"JWT role claim is ADMIN\", () => pm.expect(claims.role).to.eql(\"ADMIN\"));",
+                  "pm.test(\"JWT carries categories:write\", () => pm.expect(claims.scope.split(\" \")).to.include(\"categories:write\"));"
                 ]
               }
             }
@@ -3988,6 +4019,855 @@
                 "exec": [
                   "pm.test(\"Status code is 404\", () => pm.response.to.have.status(404));",
                   "pm.test(\"Response is JSON\", () => pm.response.to.be.json);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "7b. Authentication & Authorization Proof",
+      "description": "Evidence for: Authentication and authorisation should be implemented (OAuth2, JWT or other).\n\nA. Authentication: tokens are verified; tampered, forged (alg=none) and wrong-scheme tokens get 401.\nB. Role-based authorization: a role becomes OAuth2 scopes; MEMBER lacks categories:write and gets 403 insufficient_scope.\nC. Ownership: members cannot touch other users' data (403/404); ADMIN can.\n\nNeeds folders 2-6 to have run first (tokens, userId, adminUserId, categoryId).",
+      "item": [
+        {
+          "name": "A1 - Valid Member Token Is Accepted",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "me"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));",
+                  "const cryptoJs = require(\"crypto-js\");",
+                  "const decodeJwt = (t) => JSON.parse(cryptoJs.enc.Base64.parse(t.split(\".\")[1].replace(/-/g, \"+\").replace(/_/g, \"/\")).toString(cryptoJs.enc.Utf8));",
+                  "const claims = decodeJwt(pm.collectionVariables.get(\"token\"));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Token subject is the logged-in member\", () => pm.expect(Number(claims.sub)).to.eql(Number(pm.collectionVariables.get(\"userId\"))));",
+                  "pm.test(\"API returns that same user\", () => pm.expect(body.data.id).to.eql(Number(claims.sub)));",
+                  "pm.test(\"Password is never returned\", () => pm.expect(body.data).to.not.have.property(\"password\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "A2 - 401 Tampered Token Signature",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "me"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tamperedToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const token = pm.collectionVariables.get(\"token\");",
+                  "const last = token.slice(-1) === \"A\" ? \"B\" : \"A\";",
+                  "pm.collectionVariables.set(\"tamperedToken\", token.slice(0, -1) + last);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 401\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"WWW-Authenticate says invalid_token\", () => pm.expect(pm.response.headers.get(\"WWW-Authenticate\")).to.include(\"invalid_token\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "A3 - 401 Forged Unsigned ADMIN Token (alg=none)",
+          "description": "Builds an unsigned token that claims role ADMIN and every scope. The API pins HS256, so it is rejected.",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/categories",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "categories"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{forgedToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Forged Category\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const cryptoJs = require(\"crypto-js\");",
+                  "const b64url = (obj) => cryptoJs.enc.Base64.stringify(cryptoJs.enc.Utf8.parse(JSON.stringify(obj))).replace(/=+$/, \"\").replace(/\\+/g, \"-\").replace(/\\//g, \"_\");",
+                  "const now = Math.floor(Date.now() / 1000);",
+                  "const header = { alg: \"none\", typ: \"JWT\" };",
+                  "const payload = { sub: String(pm.collectionVariables.get(\"userId\")), role: \"ADMIN\", scope: \"profile categories:read categories:write recipes:read recipes:write mealplans:read mealplans:write\", iat: now, exp: now + 3600 };",
+                  "pm.collectionVariables.set(\"forgedToken\", b64url(header) + \".\" + b64url(payload) + \".\");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 401\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"WWW-Authenticate says invalid_token\", () => pm.expect(pm.response.headers.get(\"WWW-Authenticate\")).to.include(\"invalid_token\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "A4 - 401 Wrong Authorization Scheme",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Basic {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "me"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 401\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"Bearer challenge\", () => pm.expect(pm.response.headers.get(\"WWW-Authenticate\")).to.include(\"Bearer\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "B1 - Admin Token Carries categories:write",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "me"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));",
+                  "const cryptoJs = require(\"crypto-js\");",
+                  "const decodeJwt = (t) => JSON.parse(cryptoJs.enc.Base64.parse(t.split(\".\")[1].replace(/-/g, \"+\").replace(/_/g, \"/\")).toString(cryptoJs.enc.Utf8));",
+                  "const claims = decodeJwt(pm.collectionVariables.get(\"adminToken\"));",
+                  "pm.test(\"Role is ADMIN\", () => pm.expect(pm.response.json().data.role).to.eql(\"ADMIN\"));",
+                  "pm.test(\"Scope includes categories:write\", () => pm.expect(claims.scope.split(\" \")).to.include(\"categories:write\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "B2 - 403 Member Updates Category",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/categories/{{categoryId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "categories",
+                "{{categoryId}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Hijacked\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 403\", () => pm.response.to.have.status(403));",
+                  "pm.test(\"WWW-Authenticate says insufficient_scope\", () => pm.expect(pm.response.headers.get(\"WWW-Authenticate\")).to.include(\"insufficient_scope\"));",
+                  "pm.test(\"Names the missing scope\", () => pm.expect(pm.response.json().message).to.include(\"categories:write\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "B3 - 403 Member Deletes Category",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/categories/{{categoryId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "categories",
+                "{{categoryId}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 403\", () => pm.response.to.have.status(403));",
+                  "pm.test(\"WWW-Authenticate says insufficient_scope\", () => pm.expect(pm.response.headers.get(\"WWW-Authenticate\")).to.include(\"insufficient_scope\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "B4 - 401 Anonymous Creates Recipe",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/recipes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "recipes"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Anonymous\",\n  \"ingredients\": [\n    \"x\"\n  ],\n  \"instructions\": \"Nope.\",\n  \"categoryId\": {{categoryId}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 401\", () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "C1 - Admin Creates System Recipe",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/recipes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "recipes"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"NutriPrep Overnight Oats\",\n  \"ingredients\": [\n    \"oats\",\n    \"milk\",\n    \"honey\"\n  ],\n  \"instructions\": \"Mix and refrigerate overnight.\",\n  \"calories\": 350,\n  \"protein\": 12,\n  \"carbs\": 55,\n  \"fat\": 7,\n  \"categoryId\": {{categoryId}},\n  \"isSystem\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 201\", () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set(\"systemRecipeId\", body.data.id);",
+                  "pm.test(\"Authored by the admin\", () => pm.expect(body.data.authorId).to.eql(Number(pm.collectionVariables.get(\"adminUserId\"))));",
+                  "pm.test(\"Marked as system and public\", () => { pm.expect(body.data.isSystem).to.eql(true); pm.expect(body.data.isPublic).to.eql(true); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "C2 - 403 Member Updates Admin's Recipe",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/recipes/{{systemRecipeId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "recipes",
+                "{{systemRecipeId}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Hijacked\",\n  \"ingredients\": [\n    \"x\"\n  ],\n  \"instructions\": \"Nope.\",\n  \"categoryId\": {{categoryId}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 403\", () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "C3 - 403 Member Deletes Admin's Recipe",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/recipes/{{systemRecipeId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "recipes",
+                "{{systemRecipeId}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 403\", () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "C4 - Admin Creates Private Recipe",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/recipes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "recipes"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Admin Secret Recipe\",\n  \"ingredients\": [\n    \"x\"\n  ],\n  \"instructions\": \"Private.\",\n  \"categoryId\": {{categoryId}},\n  \"isPublic\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 201\", () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set(\"privateRecipeId\", pm.response.json().data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "C5 - 404 Member Reads Another User's Private Recipe",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/recipes/{{privateRecipeId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "recipes",
+                "{{privateRecipeId}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 404\", () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "C6 - 404 Anonymous Reads Private Recipe",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/recipes/{{privateRecipeId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "recipes",
+                "{{privateRecipeId}}"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 404\", () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "C7 - 403 Member Deletes Another User",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/users/{{adminUserId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "{{adminUserId}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 403\", () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "C8 - Admin Reads Member Profile",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/users/{{userId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "{{userId}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Admin sees the member\", () => pm.expect(pm.response.json().data.id).to.eql(Number(pm.collectionVariables.get(\"userId\"))));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "C9 - Admin Lists Member's Meal Plans",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/mealplans?userId={{userId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "mealplans"
+              ],
+              "query": [
+                {
+                  "key": "userId",
+                  "value": "{{userId}}"
+                }
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Only the member's plans\", () => body.data.forEach((p) => pm.expect(p.userId).to.eql(Number(pm.collectionVariables.get(\"userId\")))));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "C10 - Admin Deletes System Recipe",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/recipes/{{systemRecipeId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "recipes",
+                "{{systemRecipeId}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "C11 - Admin Deletes Private Recipe",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/recipes/{{privateRecipeId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "recipes",
+                "{{privateRecipeId}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 204\", () => pm.response.to.have.status(204));"
                 ]
               }
             }
