@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "NutriPrep API",
-    "description": "Full request collection for the NutriPrep REST API.\n\nRun the folders in order (or use Collection Runner): Auth stores `token`, `adminToken` and `userId`; create requests store `categoryId`, `recipeId` and `mealPlanId` for later requests. The admin user comes from `npm run prisma:seed` (ADMIN_EMAIL / ADMIN_PASSWORD in .env).\n\n`2b. OAuth2` covers the OAuth2 token endpoint: password, refresh (rotation), narrow scopes, client credentials and revocation. Set `serviceClientSecret` to your OAUTH_SERVICE_CLIENT_SECRET.\n\n`7b. Authentication & Authorization Proof` shows requirement 3 step by step: token verification (tampered, forged alg=none, wrong scheme), role-based scopes, and ownership rules.",
+    "description": "Full request collection for the NutriPrep REST API.\n\nRun the folders in order (or use Collection Runner): Auth stores `token`, `adminToken` and `userId`; create requests store `categoryId`, `recipeId` and `mealPlanId` for later requests. The admin user comes from `npm run prisma:seed` (ADMIN_EMAIL / ADMIN_PASSWORD in .env).\n\n`2b. OAuth2` covers the OAuth2 token endpoint: password, refresh (rotation), narrow scopes, client credentials and revocation. Set `serviceClientSecret` to your OAUTH_SERVICE_CLIENT_SECRET.\n\n`7b. Security & Access Control` covers token verification (tampered, forged alg=none, wrong scheme), role-based scopes and ownership rules.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -4027,11 +4027,11 @@
       ]
     },
     {
-      "name": "7b. Authentication & Authorization Proof",
-      "description": "Evidence for: Authentication and authorisation should be implemented (OAuth2, JWT or other).\n\nA. Authentication: tokens are verified; tampered, forged (alg=none) and wrong-scheme tokens get 401.\nB. Role-based authorization: a role becomes OAuth2 scopes; MEMBER lacks categories:write and gets 403 insufficient_scope.\nC. Ownership: members cannot touch other users' data (403/404); ADMIN can.\n\nNeeds folders 2-6 to have run first (tokens, userId, adminUserId, categoryId).",
+      "name": "7b. Security & Access Control",
+      "description": "Token verification, role-based scopes and ownership rules.\n\nNeeds folders 2-6 to have run first (tokens, userId, adminUserId, categoryId).",
       "item": [
         {
-          "name": "A1 - Valid Member Token Is Accepted",
+          "name": "Valid Member Token Is Accepted",
           "request": {
             "method": "GET",
             "header": [],
@@ -4076,7 +4076,7 @@
           ]
         },
         {
-          "name": "A2 - 401 Tampered Token Signature",
+          "name": "401 Tampered Token Signature",
           "request": {
             "method": "GET",
             "header": [],
@@ -4126,7 +4126,7 @@
           ]
         },
         {
-          "name": "A3 - 401 Forged Unsigned ADMIN Token (alg=none)",
+          "name": "401 Forged Unsigned ADMIN Token (alg=none)",
           "description": "Builds an unsigned token that claims role ADMIN and every scope. The API pins HS256, so it is rejected.",
           "request": {
             "method": "POST",
@@ -4193,7 +4193,7 @@
           ]
         },
         {
-          "name": "A4 - 401 Wrong Authorization Scheme",
+          "name": "401 Wrong Authorization Scheme",
           "request": {
             "method": "GET",
             "header": [
@@ -4230,7 +4230,7 @@
           ]
         },
         {
-          "name": "B1 - Admin Token Carries categories:write",
+          "name": "Admin Token Carries categories:write",
           "request": {
             "method": "GET",
             "header": [],
@@ -4273,7 +4273,7 @@
           ]
         },
         {
-          "name": "B2 - 403 Member Updates Category",
+          "name": "403 Member Updates Category",
           "request": {
             "method": "PUT",
             "header": [
@@ -4327,7 +4327,7 @@
           ]
         },
         {
-          "name": "B3 - 403 Member Deletes Category",
+          "name": "403 Member Deletes Category",
           "request": {
             "method": "DELETE",
             "header": [],
@@ -4366,7 +4366,7 @@
           ]
         },
         {
-          "name": "B4 - 401 Anonymous Creates Recipe",
+          "name": "401 Anonymous Creates Recipe",
           "request": {
             "method": "POST",
             "header": [
@@ -4410,7 +4410,7 @@
           ]
         },
         {
-          "name": "C1 - Admin Creates System Recipe",
+          "name": "Admin Creates System Recipe",
           "request": {
             "method": "POST",
             "header": [
@@ -4465,7 +4465,7 @@
           ]
         },
         {
-          "name": "C2 - 403 Member Updates Admin's Recipe",
+          "name": "403 Member Updates Admin's Recipe",
           "request": {
             "method": "PUT",
             "header": [
@@ -4517,7 +4517,7 @@
           ]
         },
         {
-          "name": "C3 - 403 Member Deletes Admin's Recipe",
+          "name": "403 Member Deletes Admin's Recipe",
           "request": {
             "method": "DELETE",
             "header": [],
@@ -4555,7 +4555,7 @@
           ]
         },
         {
-          "name": "C4 - Admin Creates Private Recipe",
+          "name": "Admin Creates Private Recipe",
           "request": {
             "method": "POST",
             "header": [
@@ -4607,7 +4607,7 @@
           ]
         },
         {
-          "name": "C5 - 404 Member Reads Another User's Private Recipe",
+          "name": "404 Member Reads Another User's Private Recipe",
           "request": {
             "method": "GET",
             "header": [],
@@ -4645,7 +4645,7 @@
           ]
         },
         {
-          "name": "C6 - 404 Anonymous Reads Private Recipe",
+          "name": "404 Anonymous Reads Private Recipe",
           "request": {
             "method": "GET",
             "header": [],
@@ -4676,7 +4676,7 @@
           ]
         },
         {
-          "name": "C7 - 403 Member Deletes Another User",
+          "name": "403 Member Deletes Another User",
           "request": {
             "method": "DELETE",
             "header": [],
@@ -4714,7 +4714,7 @@
           ]
         },
         {
-          "name": "C8 - Admin Reads Member Profile",
+          "name": "Admin Reads Member Profile",
           "request": {
             "method": "GET",
             "header": [],
@@ -4753,7 +4753,7 @@
           ]
         },
         {
-          "name": "C9 - Admin Lists Member's Meal Plans",
+          "name": "Admin Lists Member's Meal Plans",
           "request": {
             "method": "GET",
             "header": [],
@@ -4798,7 +4798,7 @@
           ]
         },
         {
-          "name": "C10 - Admin Deletes System Recipe",
+          "name": "Admin Deletes System Recipe",
           "request": {
             "method": "DELETE",
             "header": [],
@@ -4836,7 +4836,7 @@
           ]
         },
         {
-          "name": "C11 - Admin Deletes Private Recipe",
+          "name": "Admin Deletes Private Recipe",
           "request": {
             "method": "DELETE",
             "header": [],

@@ -366,7 +366,7 @@ Collection responses include pagination metadata:
 
 ## Postman Collection
 
-`postman/NutriPrep-API.postman_collection.json` contains requests for every API method, including error cases (400, 401, 403, 404). Import it into Postman and run it with the Collection Runner: requests save `token`, `adminToken`, `userId`, `categoryId`, `recipeId` and `mealPlanId` into collection variables, and the last folder deletes the created data. The `2b. OAuth2` folder walks through the password, refresh, client credentials and revoke flows. Set the `serviceClientSecret` collection variable to your `OAUTH_SERVICE_CLIENT_SECRET` first.
+`postman/NutriPrep-API.postman_collection.json` contains requests for every API method, including error cases (400, 401, 403, 404). Import it into Postman and run it with the Collection Runner: requests save `token`, `adminToken`, `userId`, `categoryId`, `recipeId` and `mealPlanId` into collection variables, and the last folder deletes the created data. The `2b. OAuth2` folder walks through the password, refresh, client credentials and revoke flows. The `7b. Security & Access Control` folder tests token verification, role-based scopes and ownership rules. Set the `serviceClientSecret` collection variable to your `OAUTH_SERVICE_CLIENT_SECRET` first.
 
 Before running it, make sure the collection variables `adminEmail`, `adminPassword` and `serviceClientSecret` match `ADMIN_EMAIL`, `ADMIN_PASSWORD` and `OAUTH_SERVICE_CLIENT_SECRET` in your `.env`, and run `npm run prisma:seed` once.
 
@@ -375,20 +375,6 @@ It can also be run from the command line (variables can be overridden with `--en
 ```bash
 npx newman run postman/NutriPrep-API.postman_collection.json --env-var "adminEmail=admin@nutriprep.local" --env-var "adminPassword=..." --env-var "serviceClientSecret=..."
 ```
-
-### Where each requirement is shown
-
-| Requirement | Where in the collection |
-| ----------- | ----------------------- |
-| All API methods work correctly | Folders 1-6 and 8: every `GET`, `POST`, `PUT` and `DELETE` route, each with status and body assertions |
-| Correct data is returned | Assertions on response bodies, e.g. preset filters, calendar-ordered weekly plans, macro totals, popularity order, no passwords or emails in responses |
-| Authentication and authorisation (OAuth2, JWT) | `2. Auth & Register` (JWT login with role/scope claim checks), `2b. OAuth2` (password, refresh rotation, client credentials, revoke, scope limits), `7. Error Cases` (401/403) and `7b. Authentication & Authorization Proof` |
-
-`7b. Authentication & Authorization Proof` is ordered for a demo:
-
-- **A. Authentication**: a valid token is accepted; a tampered signature, a forged unsigned `alg=none` ADMIN token and a wrong `Authorization` scheme all get `401`.
-- **B. Role-based authorization**: the ADMIN token carries `categories:write`; a MEMBER updating or deleting a category gets `403 insufficient_scope`; anonymous writes get `401`.
-- **C. Ownership**: a member cannot edit or delete the admin's recipe, read another user's private recipe, or delete another user; the admin can read the member's profile and meal plans and delete any recipe.
 
 ## Project Structure
 
