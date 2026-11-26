@@ -366,12 +366,14 @@ Collection responses include pagination metadata:
 
 ## Postman Collection
 
-`postman/NutriPrep-API.postman_collection.json` contains requests for every API method, including error cases (400, 401, 403, 404). Import it into Postman and run it with the Collection Runner: requests save `token`, `adminToken`, `userId`, `categoryId`, `recipeId` and `mealPlanId` into collection variables, and the last folder deletes the created data. The `2b. OAuth2` folder walks through the password, refresh, client credentials and revoke flows. Set the `serviceClientSecret` collection variable to your `OAUTH_SERVICE_CLIENT_SECRET` first.
+`postman/NutriPrep-API.postman_collection.json` contains requests for every API method, including error cases (400, 401, 403, 404). Import it into Postman and run it with the Collection Runner: requests save `token`, `adminToken`, `userId`, `categoryId`, `recipeId` and `mealPlanId` into collection variables, and the last folder deletes the created data. The `2b. OAuth2` folder walks through the password, refresh, client credentials and revoke flows. The `7b. Security & Access Control` folder tests token verification, role-based scopes and ownership rules. Set the `serviceClientSecret` collection variable to your `OAUTH_SERVICE_CLIENT_SECRET` first.
 
-It can also be run from the command line:
+Before running it, make sure the collection variables `adminEmail`, `adminPassword` and `serviceClientSecret` match `ADMIN_EMAIL`, `ADMIN_PASSWORD` and `OAUTH_SERVICE_CLIENT_SECRET` in your `.env`, and run `npm run prisma:seed` once.
+
+It can also be run from the command line (variables can be overridden with `--env-var`):
 
 ```bash
-npx newman run postman/NutriPrep-API.postman_collection.json
+npx newman run postman/NutriPrep-API.postman_collection.json --env-var "adminEmail=admin@nutriprep.local" --env-var "adminPassword=..." --env-var "serviceClientSecret=..."
 ```
 
 ## Project Structure
