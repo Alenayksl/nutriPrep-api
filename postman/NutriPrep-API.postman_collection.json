@@ -459,7 +459,7 @@
                 "exec": [
                   "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));",
                   "const body = pm.response.json();",
-                  "pm.test(\"Bearer token with refresh token\", () => { pm.expect(body.token_type).to.eql(\"Bearer\"); pm.expect(body.refresh_token).to.be.a(\"string\"); });",
+                  "pm.test(\"Token type is Bearer, with a refresh token\", () => { pm.expect(body.token_type).to.eql(\"Bearer\"); pm.expect(body.refresh_token).to.be.a(\"string\"); });",
                   "pm.test(\"MEMBER role scopes\", () => pm.expect(body.scope).to.eql(\"profile categories:read recipes:read recipes:write mealplans:read mealplans:write\"));",
                   "pm.test(\"Not cached\", () => pm.expect(pm.response.headers.get(\"Cache-Control\")).to.eql(\"no-store\"));",
                   "pm.collectionVariables.set(\"oauthAccessToken\", body.access_token);",
@@ -4223,7 +4223,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test(\"Status code is 401\", () => pm.response.to.have.status(401));",
-                  "pm.test(\"Bearer challenge\", () => pm.expect(pm.response.headers.get(\"WWW-Authenticate\")).to.include(\"Bearer\"));"
+                  "pm.test(\"WWW-Authenticate asks for Bearer\", () => pm.expect(pm.response.headers.get(\"WWW-Authenticate\")).to.include(\"Bearer\"));"
                 ]
               }
             }
