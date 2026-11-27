@@ -62,7 +62,6 @@ const resolveAuthorId = (input: RecipeInput, actor: Actor, fallbackAuthorId = ac
   return authorId;
 };
 
-// Prisma reports a missing connect target as P2025, which looks like "recipe not found", so check up front.
 const assertReferencesExist = async (input: RecipeInput, authorId: number): Promise<void> => {
   const [category, author] = await Promise.all([
     prisma.category.findUnique({ where: { id: input.categoryId }, select: { id: true } }),
