@@ -1,32 +1,57 @@
 # NutriPrep API
 
-NutriPrep API is a REST backend for recipes, categories, users, and meal plans. It is built with Node.js, Express, TypeScript, Prisma ORM, and PostgreSQL.
+A REST API for planning healthy meals: browse recipes by category and nutrition, build a weekly meal plan, and share recipes and plans with other users. It includes its own OAuth 2.0 authorization server with role-based access control.
 
-## Requirements
+Built with **Node.js**, **Express 5**, **TypeScript**, **Prisma** and **PostgreSQL**.
 
-- Node.js 18+
+## Features
+
+- **Recipes and categories** with calories and macros, pagination, nutrition filters and named presets (`high-protein`, `low-calorie`, ...)
+- **Weekly meal plans** with one recipe per day and meal (Breakfast, Lunch, Dinner), plus daily and weekly macro totals
+- **Sharing**: recipes and weekly plans can be public or private
+- **Popular recipes**, ranked by how many meal plans saved them
+- **System recipes**: default recipes provided by admins
+- **OAuth 2.0** token endpoint with the password, refresh token and client credentials grants, refresh token rotation and revocation
+- **Role-based authorization**: each role maps to a set of OAuth2 scopes, and ownership rules keep users' data their own
+- **Postman collection** with automated tests for every endpoint
+
+## Tech stack
+
+| Area           | Technology                                   |
+| -------------- | -------------------------------------------- |
+| Runtime        | Node.js 18+                                  |
+| Framework      | Express 5                                    |
+| Language       | TypeScript                                   |
+| Database / ORM | PostgreSQL, Prisma                           |
+| Auth           | OAuth 2.0, JWT (`jsonwebtoken`), bcrypt      |
+| Testing        | Postman / Newman                             |
+
+## Getting started
+
+### Prerequisites
+
+- Node.js 18 or newer
 - PostgreSQL
 - npm
 
-## Setup
+### Installation
 
 ```bash
+git clone https://github.com/Alenayksl/nutriPrep-api.git
+cd nutriPrep-api
 npm install
-copy .env.example .env
 ```
 
-Update `.env` with the local PostgreSQL connection and a long random `JWT_SECRET`.
-
-Generate Prisma Client and apply the database migration:
+Create your environment file from the template and fill it in (see [Environment variables](#environment-variables)):
 
 ```bash
-npm run prisma:generate
-npx prisma migrate dev
+cp .env.example .env        # Windows: copy .env.example .env
 ```
 
-Seed the admin user (needed for category write routes; uses `ADMIN_EMAIL` / `ADMIN_PASSWORD` from `.env`):
+Create the database tables, then seed the admin user and the OAuth2 clients:
 
 ```bash
+npx prisma migrate deploy
 npm run prisma:seed
 ```
 
@@ -36,64 +61,72 @@ Start the development server:
 npm run dev
 ```
 
-The API runs at `http://localhost:5000` by default.
-
-## Environment Variables
-
-| Variable         | Description                           | Example                                                             |
-| ---------------- | ------------------------------------- | ------------------------------------------------------------------- |
-| `PORT`           | HTTP port                             | `5000`                                                              |
-| `DATABASE_URL`   | PostgreSQL connection string          | `postgresql://USER:PASSWORD@localhost:5432/nutriprep?schema=public` |
-| `NODE_ENV`       | Runtime environment                   | `development`                                                       |
-| `CORS_ORIGIN`    | Comma-separated frontend origins      | `http://localhost:3000`                                             |
-| `JWT_SECRET`     | Secret used to sign and verify tokens | Long random value                                                   |
-| `JWT_EXPIRES_IN` | Token lifetime                        | `1h`                                                                |
-| `ADMIN_EMAIL`    | Email of the seeded admin user        | `admin@nutriprep.local`                                             |
-| `ADMIN_PASSWORD` | Password of the seeded admin user     | Any local value                                                     |
-| `REFRESH_TOKEN_EXPIRES_DAYS`  | OAuth2 refresh token lifetime in days          | `30`                |
-| `OAUTH_WEB_CLIENT_ID`         | Seeded public client (password + refresh)      | `nutriprep-web`     |
-| `OAUTH_SERVICE_CLIENT_ID`     | Seeded confidential machine client             | `nutriprep-service` |
-| `OAUTH_SERVICE_CLIENT_SECRET` | Secret of the machine client (seed skips it if unset) | Long random value |
-
-Never commit `.env`. Use `.env.example` as the configuration template.
-
-## Scripts
+The API runs at `http://localhost:5000`. Check that it is up:
 
 ```bash
-npm run dev              # Start the TypeScript development server
-npm run build            # Compile TypeScript to dist/
-npm start                # Start the compiled server
-npm run prisma:generate  # Generate Prisma Client
-npm run prisma:migrate   # Run Prisma migrations
-npm run prisma:seed      # Create or update the admin user and OAuth2 clients
+curl http://localhost:5000/api/health
 ```
 
-## Authentication (OAuth2, role based)
+### Environment variables
 
-The API is its own OAuth 2.0 authorization server and resource server. Access tokens are short-lived JWTs (HS256, `JWT_EXPIRES_IN`). Refresh tokens are random strings; only their SHA-256 hash is stored in the database.
+| Variable                      | Description                                              | Example                                                             |
+| ----------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------- |
+| `PORT`                        | HTTP port                                                | `5000`                                                              |
+| `DATABASE_URL`                | PostgreSQL connection string                             | `postgresql://USER:PASSWORD@localhost:5432/nutriprep?schema=public` |
+| `NODE_ENV`                    | Runtime environment                                      | `development`                                                       |
+| `CORS_ORIGIN`                 | Allowed frontend origins, comma-separated                | `http://localhost:3000`                                             |
+| `JWT_SECRET`                  | Secret for signing access tokens (at least 32 characters) | Long random value                                                   |
+| `JWT_EXPIRES_IN`              | Access token lifetime                                    | `1h`                                                                |
+| `REFRESH_TOKEN_EXPIRES_DAYS`  | Refresh token lifetime in days                           | `30`                                                                |
+| `ADMIN_EMAIL`                 | Email of the seeded admin user                           | `admin@nutriprep.local`                                             |
+| `ADMIN_PASSWORD`              | Password of the seeded admin user                        | Any strong value                                                    |
+| `OAUTH_WEB_CLIENT_ID`         | ID of the seeded public client                           | `nutriprep-web`                                                     |
+| `OAUTH_SERVICE_CLIENT_ID`     | ID of the seeded machine-to-machine client               | `nutriprep-service`                                                 |
+| `OAUTH_SERVICE_CLIENT_SECRET` | Secret of the machine client (skipped by the seed if unset) | Long random value                                                |
 
-### Roles become scopes
+Never commit `.env`; it is listed in `.gitignore`.
 
-A token's permissions are **scopes**. The scopes a user can receive come from their role:
+### Scripts
 
-| Role     | Scopes                                                                |
-| -------- | --------------------------------------------------------------------- |
-| `GUEST`  | `profile`, `categories:read`, `recipes:read`                          |
-| `MEMBER` | every `GUEST` scope + `recipes:write`, `mealplans:read`, `mealplans:write` |
-| `ADMIN`  | every `MEMBER` scope + `categories:write`                             |
+| Command                   | Description                                        |
+| ------------------------- | -------------------------------------------------- |
+| `npm run dev`             | Start the development server with auto-reload      |
+| `npm run build`           | Compile TypeScript to `dist/`                      |
+| `npm start`               | Run the compiled server                            |
+| `npm run prisma:generate` | Generate the Prisma Client                         |
+| `npm run prisma:migrate`  | Create and apply migrations during development     |
+| `npm run prisma:seed`     | Create or update the admin user and OAuth2 clients |
 
-Granted scopes = requested scopes ∩ role scopes ∩ the client's allowed scopes. Leaving `scope` empty requests everything allowed. Asking for a scope outside that set returns `invalid_scope`, so a member can never get `categories:write`. A client can also ask for less (e.g. `scope=profile`) to get a token that can only read the profile.
+## Authentication and authorization
 
-On every refresh, scopes are re-checked against the user's **current** role, so demoting a user takes effect at their next refresh at the latest.
+The API is both an OAuth 2.0 **authorization server** (it issues tokens) and a **resource server** (it checks them).
 
-### Clients
+- **Access tokens** are short-lived JWTs signed with HS256. They carry the user's id, role and scopes.
+- **Refresh tokens** are random strings. Only their SHA-256 hash is stored. Each one works once and is replaced on use (rotation). Reusing an old one revokes every refresh token of that user for that client.
+- **Passwords** are hashed with bcrypt and never returned by the API.
+
+### Roles and scopes
+
+Every user has a role. A role decides which **scopes** (permissions) a token can carry:
+
+| Role     | Scopes                                                                            |
+| -------- | --------------------------------------------------------------------------------- |
+| `GUEST`  | `profile`, `categories:read`, `recipes:read`                                       |
+| `MEMBER` | everything `GUEST` has, plus `recipes:write`, `mealplans:read`, `mealplans:write`  |
+| `ADMIN`  | everything `MEMBER` has, plus `categories:write`                                   |
+
+New users are registered as `MEMBER`. A token never gets more than its role allows; requesting more returns `invalid_scope`. Clients may request fewer scopes, for example `scope=profile`.
+
+On top of scopes, **ownership rules** apply: users can only change their own recipes, meal plans and account. `ADMIN` can act on any user's data.
+
+### OAuth2 clients
 
 `npm run prisma:seed` creates two clients:
 
-| Client              | Type                    | Grants                       | Scopes             |
-| ------------------- | ----------------------- | ---------------------------- | ------------------ |
-| `nutriprep-web`     | Public (no secret)      | `password`, `refresh_token`  | All (capped by role) |
-| `nutriprep-service` | Confidential (secret)   | `client_credentials`         | `categories:read`, `categories:write` |
+| Client              | Type                  | Grant types                 | Scopes                                |
+| ------------------- | --------------------- | --------------------------- | ------------------------------------- |
+| `nutriprep-web`     | Public (no secret)    | `password`, `refresh_token` | All, capped by the user's role        |
+| `nutriprep-service` | Confidential (secret) | `client_credentials`        | `categories:read`, `categories:write` |
 
 ### Register
 
@@ -108,9 +141,7 @@ Content-Type: application/json
 }
 ```
 
-New users get the `MEMBER` role. Passwords are stored as bcrypt hashes and are never returned.
-
-### Get a token: password grant
+### Get a token
 
 ```http
 POST /api/oauth/token
@@ -121,30 +152,46 @@ grant_type=password&client_id=nutriprep-web&username=ada@example.com&password=st
 
 ```json
 {
-  "access_token": "eyJ...",
+  "access_token": "eyJhbGciOi...",
   "token_type": "Bearer",
   "expires_in": 3600,
   "scope": "profile categories:read recipes:read recipes:write mealplans:read mealplans:write",
-  "refresh_token": "Vb3..."
+  "refresh_token": "Vb3k..."
 }
 ```
 
-The token endpoint also accepts a JSON body. Add `&scope=profile mealplans:read` to request fewer scopes.
+Send the access token on protected requests:
 
-> The password grant is meant for first-party apps such as this project's own frontend. OAuth 2.1 drops it in favor of Authorization Code + PKCE, which needs a browser login page.
+```http
+GET /api/auth/me
+Authorization: Bearer <access_token>
+```
 
-### Refresh
+The token endpoint also accepts a JSON body.
+
+### Refresh a token
 
 ```http
 POST /api/oauth/token
 Content-Type: application/x-www-form-urlencoded
 
-grant_type=refresh_token&client_id=nutriprep-web&refresh_token=Vb3...
+grant_type=refresh_token&client_id=nutriprep-web&refresh_token=Vb3k...
 ```
 
-Each refresh token works **once**. The response contains a new one (rotation). If an already-used refresh token is sent again, the API treats it as stolen and revokes every refresh token of that user for that client. A refresh can narrow the scope but never widen it.
+The response contains a new access token and a new refresh token.
 
-### Machine-to-machine: client credentials
+### Log out (revoke)
+
+```http
+POST /api/oauth/revoke
+Content-Type: application/x-www-form-urlencoded
+
+client_id=nutriprep-web&token=Vb3k...
+```
+
+The refresh token can no longer be used. The access token expires on its own.
+
+### Machine-to-machine (client credentials)
 
 ```http
 POST /api/oauth/token
@@ -154,166 +201,159 @@ Content-Type: application/x-www-form-urlencoded
 grant_type=client_credentials
 ```
 
-The token represents the client, not a user. It carries no refresh token and works only on routes whose scope the client has, for example category writes. Routes that act on a user's own data (`/auth/me`, `/users/:id`, meal plans, recipe writes) answer `403` to it. Confidential clients can also send `client_id` and `client_secret` in the body.
+The token belongs to the client, not to a user, so it only works on routes whose scope the client has (category management).
 
-### Revoke (logout)
+> The password grant is intended for first-party clients such as this project's own frontend.
 
-```http
-POST /api/oauth/revoke
-Content-Type: application/x-www-form-urlencoded
+### Simple login
 
-client_id=nutriprep-web&token=Vb3...
+`POST /api/auth/login` with `{ "email": "...", "password": "..." }` returns `{ token, user }`. The token has every scope of the user's role but no refresh token. New clients should prefer `/api/oauth/token`.
+
+## API reference
+
+All routes are prefixed with `/api`. "Public" routes work without a token. If a token is sent to a public route, it must be valid and carry the listed read scope.
+
+### System
+
+| Method | Route     | Access | Description  |
+| ------ | --------- | ------ | ------------ |
+| `GET`  | `/health` | Public | Health check |
+
+### Auth
+
+| Method | Route           | Access    | Description                       |
+| ------ | --------------- | --------- | --------------------------------- |
+| `POST` | `/oauth/token`  | Public    | Get or refresh a token (OAuth2)   |
+| `POST` | `/oauth/revoke` | Public    | Revoke a refresh token (log out)  |
+| `POST` | `/auth/login`   | Public    | Simple email/password login       |
+| `GET`  | `/auth/me`      | `profile` | Current user                      |
+
+### Users
+
+| Method   | Route                           | Access                        | Description                         |
+| -------- | ------------------------------- | ----------------------------- | ----------------------------------- |
+| `POST`   | `/users/register`               | Public                        | Register a new member               |
+| `GET`    | `/users/:id`                    | `profile`, self or admin      | Get a user                          |
+| `PUT`    | `/users/:id`                    | `profile`, self or admin      | Update username, email or password  |
+| `DELETE` | `/users/:id`                    | `profile`, self or admin      | Delete a user and all of their data |
+| `GET`    | `/users/:id/dashboard`          | `profile`, `mealplans:read`, self or admin  | Profile, meal plans and macro totals |
+| `GET`    | `/users/:id/mealplans/weekly`   | `profile`, `mealplans:read`, self or admin  | The week grouped by day with totals  |
+| `PUT`    | `/users/:id/mealplans/visibility` | `profile`, `mealplans:write`, self or admin | Share or hide the weekly plan      |
+
+### Categories
+
+| Method   | Route                    | Access                          | Description                 |
+| -------- | ------------------------ | ------------------------------- | --------------------------- |
+| `GET`    | `/categories`            | Public (`categories:read`)      | List categories             |
+| `GET`    | `/categories/:id`        | Public (`categories:read`)      | Get a category              |
+| `GET`    | `/categories/:id/recipes`| Public (`categories:read`, `recipes:read`) | Recipes in a category |
+| `POST`   | `/categories`            | `categories:write`              | Create a category           |
+| `PUT`    | `/categories/:id`        | `categories:write`              | Update a category           |
+| `DELETE` | `/categories/:id`        | `categories:write`              | Delete an empty category    |
+
+### Recipes
+
+| Method   | Route                     | Access                          | Description                                  |
+| -------- | ------------------------- | ------------------------------- | -------------------------------------------- |
+| `GET`    | `/recipes`                | Public (`recipes:read`)         | List recipes with filters and pagination     |
+| `GET`    | `/recipes/presets`        | Public (`recipes:read`)         | List the nutrition presets                   |
+| `GET`    | `/recipes/popular`        | Public (`recipes:read`)         | Public recipes, most saved first             |
+| `GET`    | `/recipes/:id`            | Public (`recipes:read`)         | Get a recipe                                 |
+| `POST`   | `/recipes`                | `recipes:write`                 | Create a recipe (author is the caller)       |
+| `PUT`    | `/recipes/:id`            | `recipes:write`, author or admin | Update a recipe                             |
+| `PUT`    | `/recipes/:id/visibility` | `recipes:write`, author or admin | Make a recipe public or private             |
+| `DELETE` | `/recipes/:id`            | `recipes:write`, author or admin | Delete a recipe                             |
+
+Example body for `POST /recipes`:
+
+```json
+{
+  "title": "Grilled Chicken Bowl",
+  "description": "High-protein lunch bowl",
+  "ingredients": ["chicken breast", "rice", "broccoli"],
+  "instructions": "Grill the chicken, cook the rice, steam the broccoli and combine.",
+  "calories": 550,
+  "protein": 45,
+  "carbs": 60,
+  "fat": 12,
+  "isPublic": true,
+  "categoryId": 1
+}
 ```
 
-Always answers `200` (RFC 7009), whether or not the token existed.
+### Meal plans
 
-### Use the token
+| Method   | Route                       | Access                            | Description                         |
+| -------- | --------------------------- | --------------------------------- | ----------------------------------- |
+| `GET`    | `/mealplans/public`         | Public (`recipes:read`)           | List shared weekly plans            |
+| `GET`    | `/mealplans/public/:userId` | Public (`recipes:read`)           | Get one user's shared weekly plan   |
+| `GET`    | `/mealplans`                | `mealplans:read`                  | List your own meal plan entries     |
+| `GET`    | `/mealplans/:id`            | `mealplans:read`, owner or admin  | Get a meal plan entry               |
+| `POST`   | `/mealplans`                | `mealplans:write`                 | Add a recipe to a day and meal      |
+| `PUT`    | `/mealplans/:id`            | `mealplans:write`, owner or admin | Update a meal plan entry            |
+| `DELETE` | `/mealplans/:id`            | `mealplans:write`, owner or admin | Delete a meal plan entry            |
 
-```http
-GET /api/auth/me
-Authorization: Bearer <access_token>
+Example body for `POST /mealplans`:
+
+```json
+{
+  "recipeId": 12,
+  "dayOfWeek": "Monday",
+  "mealType": "Lunch"
+}
 ```
 
-### Errors
+`dayOfWeek` is `Monday` to `Sunday`, and `mealType` is `Breakfast`, `Lunch` or `Dinner`. Each user has at most one entry per day and meal; a second one returns `409`.
 
-The token endpoint answers with the RFC 6749 shape: `{ "error": "invalid_grant", "error_description": "..." }`.
+## Querying recipes
 
-| Error                    | Status | When                                                        |
-| ------------------------ | ------ | ----------------------------------------------------------- |
-| `invalid_request`        | 400    | Missing `grant_type`, `username`, `refresh_token`, ...      |
-| `invalid_client`         | 401    | Unknown client or wrong client secret                       |
-| `invalid_grant`          | 400    | Wrong password; expired, revoked or reused refresh token     |
-| `unauthorized_client`    | 400    | The client may not use that grant type                      |
-| `unsupported_grant_type` | 400    | Unknown grant type                                          |
-| `invalid_scope`          | 400    | Requested scope is outside what the role/client allows      |
-
-Protected routes follow RFC 6750: `401` with `WWW-Authenticate: Bearer error="invalid_token"` for a missing, invalid or expired token, and `403` with `error="insufficient_scope"` when the token lacks a required scope.
-
-### Legacy login
-
-`POST /api/auth/login` with `{ "email", "password" }` still works for existing clients. It returns `{ token, user }`, where `token` carries every scope of the user's role and comes without a refresh token. New clients should use `/api/oauth/token`.
-
-`JWT_SECRET` must be at least 32 characters long. Token verification pins the HS256 algorithm.
-
-## API Routes
-
-### Public Routes
-
-| Method | Route                 | Description             |
-| ------ | --------------------- | ----------------------- |
-| `GET`  | `/api/health`         | Health check            |
-| `GET`  | `/api/test`           | Test endpoint           |
-| `POST` | `/api/oauth/token`    | OAuth2 token endpoint   |
-| `POST` | `/api/oauth/revoke`   | Revoke a refresh token  |
-| `POST` | `/api/auth/login`     | Legacy login (JWT)      |
-| `POST` | `/api/users/register` | Register a member       |
-| `GET`  | `/api/categories`     | List categories         |
-| `GET`  | `/api/categories/:id` | Read a category         |
-| `GET`  | `/api/categories/:id/recipes` | List recipes in a category |
-| `GET`  | `/api/recipes`        | List recipes            |
-| `GET`  | `/api/recipes/presets` | List nutrition presets |
-| `GET`  | `/api/recipes/popular` | Best recipes: public only, most saved first |
-| `GET`  | `/api/recipes/:id`    | Read a recipe           |
-| `GET`  | `/api/mealplans/public` | List shared weekly plans |
-| `GET`  | `/api/mealplans/public/:userId` | Read one user's shared weekly plan |
-
-Public reads still work without a token. A request that **does** send a token must have the read scope for that route, or it gets `403 insufficient_scope`:
-
-| Route                                                         | Scope needed when a token is sent   |
-| ------------------------------------------------------------- | ----------------------------------- |
-| `GET /api/categories`, `GET /api/categories/:id`              | `categories:read`                   |
-| `GET /api/categories/:id/recipes`                             | `categories:read`, `recipes:read`   |
-| `GET /api/recipes`, `/recipes/presets`, `/recipes/popular`, `/recipes/:id` | `recipes:read`          |
-| `GET /api/mealplans/public`, `GET /api/mealplans/public/:userId` | `recipes:read`                   |
-
-Every role, `GUEST` included, has both read scopes. A token requested with only `scope=profile` cannot read them.
-
-### Protected Routes
-
-All protected routes require `Authorization: Bearer <access_token>` with the listed scope. Missing scope → `403 insufficient_scope`. `ADMIN` passes every ownership rule and can act on any user's resources.
-
-| Method                         | Route                             | Required scope                     | Ownership rule                    |
-| ------------------------------ | --------------------------------- | ---------------------------------- | --------------------------------- |
-| `GET`                          | `/api/auth/me`                    | `profile`                          | Returns the caller                |
-| `POST`, `PUT`, `DELETE`        | `/api/categories`                 | `categories:write`                 | -                                 |
-| `POST`                         | `/api/recipes`                    | `recipes:write`                    | `authorId` defaults to the caller |
-| `PUT`, `DELETE`                | `/api/recipes/:id`                | `recipes:write`                    | Recipe author only                |
-| `PUT`                          | `/api/recipes/:id/visibility`     | `recipes:write`                    | Recipe author only                |
-| `GET`                          | `/api/mealplans`                  | `mealplans:read`                   | Lists the caller's plans only     |
-| `GET`                          | `/api/mealplans/:id`              | `mealplans:read`                   | Plan owner only                   |
-| `POST`                         | `/api/mealplans`                  | `mealplans:write`                  | `userId` defaults to the caller   |
-| `PUT`, `DELETE`                | `/api/mealplans/:id`              | `mealplans:write`                  | Plan owner only                   |
-| `GET`, `PUT`, `DELETE`         | `/api/users/:id`                  | `profile`                          | That user only                    |
-| `GET`                          | `/api/users/:id/dashboard`        | `profile`, `mealplans:read`        | That user only                    |
-| `GET`                          | `/api/users/:id/mealplans/weekly` | `profile`, `mealplans:read`        | That user only                    |
-| `PUT`                          | `/api/users/:id/mealplans/visibility` | `profile`, `mealplans:write`   | That user only                    |
-
-Breaking another user's ownership rule returns `403`. Members cannot set `authorId` or `userId` to another user; only an `ADMIN` can.
-
-Deleting a user (by themself or by an `ADMIN`) also deletes their recipes, meal plans and refresh tokens. Other users' meal plan slots that used one of those recipes are removed too.
-
-Recipe reads stay public, but `isPublic: false` recipes are visible only to their author and to `ADMIN`. Send a token on `GET /api/recipes`, `GET /api/recipes/:id` or `GET /api/categories/:id/recipes` to include your own private recipes. Other users get `404` for them, and they cannot be added to another user's meal plan. If a token is sent on these public routes, it must be valid.
-
-## Filtering and Pagination
-
-Recipe listing supports:
+### Filters and pagination
 
 ```http
 GET /api/recipes?page=1&limit=20&categoryId=1&minProtein=20&maxCalories=600
 ```
 
-Recipes of a single category (same pagination and nutrition filters):
+| Parameter                                  | Description                                        |
+| ------------------------------------------ | -------------------------------------------------- |
+| `page`, `limit`                            | Pagination (`limit` up to 100, default 20)         |
+| `categoryId`                               | Only recipes in this category                      |
+| `minCalories`, `maxCalories`               | Calorie range                                      |
+| `minProtein`, `maxProtein`                 | Protein range (g)                                  |
+| `minCarbs`, `maxCarbs`                     | Carbohydrate range (g)                             |
+| `minFat`, `maxFat`                         | Fat range (g)                                      |
+| `preset`                                   | One or more presets, comma-separated               |
+| `sort`                                     | `newest` (default) or `popular`                    |
+| `system`                                   | `true` for system recipes only, `false` to exclude them |
 
-```http
-GET /api/categories/8/recipes?page=1&limit=20&maxCalories=600
-```
+The same parameters work on `GET /api/categories/:id/recipes` and `GET /api/recipes/popular`.
 
-### Nutrition Presets
-
-Presets are named filters computed from the stored macros, so recipes never need to be tagged by hand:
+### Nutrition presets
 
 | Preset         | Rule               |
 | -------------- | ------------------ |
-| `high-protein` | protein >= 25 g    |
-| `high-carb`    | carbs >= 50 g      |
-| `low-calorie`  | calories <= 400    |
-| `low-fat`      | fat <= 10 g        |
+| `high-protein` | protein ≥ 25 g     |
+| `high-carb`    | carbs ≥ 50 g       |
+| `low-calorie`  | calories ≤ 400     |
+| `low-fat`      | fat ≤ 10 g         |
 
-They work on both recipe listings and can be combined with commas (AND) or with explicit filters (the stricter bound wins):
+Presets can be combined with each other (`preset=high-protein,low-calorie`) and with explicit filters; the stricter bound wins.
 
-```http
-GET /api/categories/8/recipes?preset=high-carb
-GET /api/recipes?preset=high-protein,low-calorie
-```
+### Recipe responses
 
-Sorting and system recipes:
+Every recipe includes:
 
-```http
-GET /api/recipes?sort=popular          # most saved into meal plans first (default: sort=newest)
-GET /api/recipes?system=true           # only NutriPrep default recipes (system=false: only user recipes)
-GET /api/recipes/popular?categoryId=8  # "best recipes": public only, always sorted by popularity
-```
+- `savedCount`: how many meal plans use it (counted anonymously)
+- `isSystem`: whether it is a default NutriPrep recipe
+- `author`: `{ id, username }`. Emails are never exposed.
 
-Every recipe response has `savedCount` (how many meal plan slots use it, counted anonymously, private plans included), `isSystem`, and `author: { id, username }`. Author emails are never returned.
+## Sharing: public and private
 
-## Sharing: Public and Private
-
-Recipes and weekly meal plans work the same way: the owner decides who sees them, and public ones appear in "best" listings.
-
-|                     | Recipes                                   | Weekly meal plans                                  |
-| ------------------- | ----------------------------------------- | -------------------------------------------------- |
-| Default             | Public (`isPublic` defaults to `true`)    | Private                                            |
-| Share / hide        | `PUT /api/recipes/:id/visibility`         | `PUT /api/users/:id/mealplans/visibility`          |
-| Public listing      | `GET /api/recipes`, `GET /api/recipes/popular` | `GET /api/mealplans/public`, `GET /api/mealplans/public/:userId` |
-| Who sees private    | Author and `ADMIN`                        | Owner and `ADMIN`                                  |
-
-```http
-PUT /api/recipes/12/visibility
-Authorization: Bearer <access_token>
-Content-Type: application/json
-
-{ "isPublic": false }
-```
+| | Recipes | Weekly meal plans |
+| --- | --- | --- |
+| Default | Public | Private |
+| Share or hide | `PUT /api/recipes/:id/visibility` | `PUT /api/users/:id/mealplans/visibility` |
+| Public listings | `GET /api/recipes`, `GET /api/recipes/popular` | `GET /api/mealplans/public` |
+| Who sees private ones | The author and admins | The owner and admins |
 
 ```http
 PUT /api/users/5/mealplans/visibility
@@ -323,71 +363,76 @@ Content-Type: application/json
 { "isPublic": true }
 ```
 
-- A shared weekly plan shows the owner as `{ id, username }` (no email) with all seven days, the daily and weekly macro totals, and `sharedAt`. Shared plans are listed most recently shared first.
-- Private recipes never appear in a shared plan; their slots show as `null`.
-- An unshared plan answers `404` on `GET /api/mealplans/public/:userId`.
-- Saving any public recipe into a private plan is always allowed. It counts toward the recipe's `savedCount`, but nobody can see who saved it.
+- Private recipes return `404` to everyone except their author and admins, and they never appear in a shared plan.
+- Any public recipe can be saved into a private plan. Nobody can see who saved it.
+- **System recipes** are created by admins with `"isSystem": true`. They are always public, and only admins can set or remove the flag.
+- Deleting a user also deletes their recipes, meal plans and refresh tokens.
 
-### System recipes
+## Responses and errors
 
-`ADMIN` can create default NutriPrep recipes with `"isSystem": true`. System recipes are always public (`isPublic: false` → `400`), cannot be hidden, and only `ADMIN` can set or remove the flag (otherwise `403`). Omitting `isSystem` on `PUT` keeps the current value.
-
-## Meal Plan Filters
-
-Meal plan listing supports:
-
-```http
-GET /api/mealplans?page=1&limit=20&userId=1&dayOfWeek=Monday&mealType=Lunch
-```
-
-### Meal Plans
-
-A meal plan entry is one slot: user + `dayOfWeek` + `mealType` + recipe. `dayOfWeek` must be `Monday`…`Sunday` and `mealType` must be `Breakfast`, `Lunch` or `Dinner`; each user can have only one entry per day and meal (a second one returns `409`). Listings are sorted Monday → Sunday and Breakfast → Lunch → Dinner.
-
-```http
-GET /api/mealplans?userId=1&dayOfWeek=Monday   # one day
-GET /api/users/1/mealplans/weekly             # whole week, grouped by day with daily and weekly macro totals
-```
-
-Collection responses include pagination metadata:
+Successful responses use a common envelope. Lists include pagination metadata:
 
 ```json
 {
   "success": true,
   "data": [],
-  "meta": {
-    "page": 1,
-    "limit": 20,
-    "total": 0,
-    "totalPages": 0
-  }
+  "meta": { "page": 1, "limit": 20, "total": 0, "totalPages": 0 }
 }
 ```
 
-## Postman Collection
+Errors return `{ "success": false, "message": "..." }`:
 
-`postman/NutriPrep-API.postman_collection.json` contains requests for every API method, including error cases (400, 401, 403, 404). Import it into Postman and run it with the Collection Runner: requests save `token`, `adminToken`, `userId`, `categoryId`, `recipeId` and `mealPlanId` into collection variables, and the last folder deletes the created data. The `2b. OAuth2` folder walks through the password, refresh, client credentials and revoke flows. The `7b. Security & Access Control` folder tests token verification, role-based scopes and ownership rules. Set the `serviceClientSecret` collection variable to your `OAUTH_SERVICE_CLIENT_SECRET` first.
+| Status | Meaning                                                        |
+| ------ | -------------------------------------------------------------- |
+| `400`  | Invalid request body or query parameter                        |
+| `401`  | Missing, invalid or expired token                              |
+| `403`  | Missing scope, or not the owner of the resource                |
+| `404`  | Not found (also used for other users' private data)            |
+| `409`  | Conflict, e.g. duplicate meal slot or deleting a used category |
 
-Before running it, make sure the collection variables `adminEmail`, `adminPassword` and `serviceClientSecret` match `ADMIN_EMAIL`, `ADMIN_PASSWORD` and `OAUTH_SERVICE_CLIENT_SECRET` in your `.env`, and run `npm run prisma:seed` once.
+The OAuth2 endpoints follow RFC 6749 and return `{ "error": "invalid_grant", "error_description": "..." }`. Protected routes send a `WWW-Authenticate` header as described in RFC 6750.
 
-It can also be run from the command line (variables can be overridden with `--env-var`):
+## Postman collection
+
+[`postman/NutriPrep-API.postman_collection.json`](postman/NutriPrep-API.postman_collection.json) covers every endpoint, including error cases, with automated tests.
+
+1. Import the file into Postman.
+2. In the collection's **Variables**, set `adminEmail`, `adminPassword` and `serviceClientSecret` to the values in your `.env`.
+3. Start the API (`npm run dev`) and run the whole collection with the **Collection Runner**. Requests pass tokens and ids to each other through collection variables, and the last folder deletes the data the run created.
+
+Highlights:
+
+- **2b. OAuth2**: password, refresh, client credentials and revoke flows, plus scope limits
+- **7b. Security & Access Control**: rejected tampered and forged tokens, role-based scopes and ownership rules
+
+Run it from the command line with [Newman](https://github.com/postmanlabs/newman):
 
 ```bash
-npx newman run postman/NutriPrep-API.postman_collection.json --env-var "adminEmail=admin@nutriprep.local" --env-var "adminPassword=..." --env-var "serviceClientSecret=..."
+npx newman run postman/NutriPrep-API.postman_collection.json \
+  --env-var "adminEmail=<ADMIN_EMAIL>" \
+  --env-var "adminPassword=<ADMIN_PASSWORD>" \
+  --env-var "serviceClientSecret=<OAUTH_SERVICE_CLIENT_SECRET>"
 ```
 
-## Project Structure
+## Project structure
 
 ```text
 src/
   controllers/   HTTP request and response handlers
-  middleware/    validation, authentication, authorization, errors
-  models/       TypeScript request and domain types
-  routes/       REST route definitions
-  services/     business logic and Prisma queries
-  utils/        Prisma and JWT helpers
+  errors/        AppError and OAuthError
+  middleware/    Validation, authentication, authorization, error handling
+  models/        Request and domain types, OAuth2 scopes
+  routes/        Route definitions
+  services/      Business logic and database queries
+  types/         Express request typing
+  utils/         JWT and Prisma helpers
+  server.ts      Express app setup
+  index.ts       Entry point
 prisma/
-  schema.prisma PostgreSQL data model
+  schema.prisma  Data model
+  migrations/    Database migrations
+  seed.ts        Admin user and OAuth2 clients
+postman/         Postman collection
 ```
 
-The frontend can use `http://localhost:5000` as its local API base URL and send the JWT in the `Authorization` header for protected requests.
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the request flow and design decisions.
